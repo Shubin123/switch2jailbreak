@@ -8,8 +8,9 @@ const path = require('node:path');
 const os = require('node:os');
 const readline = require('node:readline');
 
-const HTTP_PORT = 80;
-const DNS_PORT = 53;
+const HTTP_PORT = process.env.PORT ? Number(process.env.PORT) : 8080;
+const DNS_PORT = process.env.DNS_PORT ? Number(process.env.DNS_PORT) : 53;
+const SKIP_DNS = process.argv.includes('--no-dns');
 
 function getLanIP() {
   for (const ifaces of Object.values(os.networkInterfaces())) {
@@ -98,10 +99,17 @@ dns.on('message', (msg, rinfo) => {
 dns.on('error', err => {
   if (err.code === 'EACCES') {
     console.error('');
-    console.error('  Port 53 and 80 require root. Run with:');
+    console.error('  Port 53 requires root. Run with sudo or use --no-dns:');
     console.error('  sudo node scripts/debug-server.cjs');
+    console.error('  node scripts/debug-server.cjs --no-dns');
     console.error('');
     process.exit(1);
+  }
+  if (err.code === 'EADDRINUSE') {
+    console.error(`[dns] Port ${DNS_PORT} in use (macOS mDNSResponder?). Starting HTTP-only mode.`);
+    console.error('[dns] Use --no-dns to suppress this, or sudo to override.\n');
+    startHTTP();
+    return;
   }
   console.error('[dns]', err.message);
 });
@@ -221,22 +229,34 @@ const httpServer = http.createServer(async (req, res) => {
 
 // --- Start everything ---
 
-dns.bind(DNS_PORT, '0.0.0.0', () => {
+let httpStarted = false;
+function startHTTP(dnsActive) {
+  if (httpStarted) return;
+  httpStarted = true;
   httpServer.listen(HTTP_PORT, '0.0.0.0', () => {
+    const addr = `http://${lanIP}:${HTTP_PORT}`;
     console.log('');
     console.log('╔═══════════════════════════════════════════════════════╗');
     console.log('║  NS2JB Debug Server                                  ║');
     console.log('╠═══════════════════════════════════════════════════════╣');
     console.log(`║  This Mac: ${lanIP}`.padEnd(56) + '║');
+    console.log(`║  Debug URL: ${addr}`.padEnd(56) + '║');
+    console.log(`║  DNS: ${dnsActive ? 'active (port ' + DNS_PORT + ')' : 'off — use browser URL'}`.padEnd(56) + '║');
     console.log('╠═══════════════════════════════════════════════════════╣');
     console.log('║                                                      ║');
-    console.log('║  On the Switch 2:                                    ║');
-    console.log('║  Settings → Internet → your network → DNS Settings   ║');
-    console.log(`║  Set Manual → Primary DNS: ${lanIP}`.padEnd(56) + '║');
-    console.log('║  Save, then tap "Connect to This Network"            ║');
+    if (dnsActive) {
+      console.log('║  On the Switch 2:                                    ║');
+      console.log('║  Settings → Internet → your network → DNS Settings   ║');
+      console.log(`║  Set Manual → Primary DNS: ${lanIP}`.padEnd(56) + '║');
+      console.log('║  Save, then tap "Connect to This Network"            ║');
+    } else {
+      console.log('║  On the Switch 2:                                    ║');
+      console.log('║  Open the captive portal browser (SwitchBru DNS or   ║');
+      console.log('║  Settings → Internet → connect), then navigate to:   ║');
+      console.log(`║    ${addr}`.padEnd(55) + '║');
+    }
     console.log('║                                                      ║');
-    console.log('║  The browser opens automatically with the debug      ║');
-    console.log('║  page. Capabilities stream here. Type JS to eval.    ║');
+    console.log('║  Capabilities stream here. Type JS to eval.          ║');
     console.log('║                                                      ║');
     console.log('╠═══════════════════════════════════════════════════════╣');
     console.log('║  :list = clients  :caps = refresh  :quit = exit      ║');
@@ -245,28 +265,40 @@ dns.bind(DNS_PORT, '0.0.0.0', () => {
     console.log('Waiting for Switch 2 to connect...');
     console.log('');
 
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout, prompt: 'debug> ' });
-    rl.prompt();
-
-    rl.on('line', line => {
-      const t = line.trim();
-      if (!t) { rl.prompt(); return; }
-      if (t === ':quit' || t === ':q') { process.exit(0); }
-      if (t === ':list' || t === ':ls') {
-        const keys = Object.keys(clients);
-        if (!keys.length) console.log('No clients');
-        else keys.forEach(k => {
-          const c = clients[k];
-          console.log(`  ${k} — ${Math.round((Date.now() - c.lastSeen) / 1000)}s ago`);
-          console.log(`    ${(c.caps.userAgent || '').substring(0, 70)}`);
-        });
-        rl.prompt(); return;
-      }
-      if (t === ':caps') { commands.push({ id: ++cmdId, type: 'request-caps' }); console.log('Requested refresh'); rl.prompt(); return; }
-      commands.push({ id: ++cmdId, type: 'eval', code: t });
-      if (!Object.keys(clients).length) console.log('(queued — no clients yet)');
+    if (process.stdin.isTTY) {
+      const rl = readline.createInterface({ input: process.stdin, output: process.stdout, prompt: 'debug> ' });
       rl.prompt();
-    });
-    rl.on('close', () => process.exit(0));
+
+      rl.on('line', line => {
+        const t = line.trim();
+        if (!t) { rl.prompt(); return; }
+        if (t === ':quit' || t === ':q') { process.exit(0); }
+        if (t === ':list' || t === ':ls') {
+          const keys = Object.keys(clients);
+          if (!keys.length) console.log('No clients');
+          else keys.forEach(k => {
+            const c = clients[k];
+            console.log(`  ${k} — ${Math.round((Date.now() - c.lastSeen) / 1000)}s ago`);
+            console.log(`    ${(c.caps.userAgent || '').substring(0, 70)}`);
+          });
+          rl.prompt(); return;
+        }
+        if (t === ':caps') { commands.push({ id: ++cmdId, type: 'request-caps' }); console.log('Requested refresh'); rl.prompt(); return; }
+        commands.push({ id: ++cmdId, type: 'eval', code: t });
+        if (!Object.keys(clients).length) console.log('(queued — no clients yet)');
+        rl.prompt();
+      });
+      rl.on('close', () => process.exit(0));
+    } else {
+      console.log('(headless mode — no REPL, watching for connections)');
+    }
   });
-});
+}
+
+if (SKIP_DNS) {
+  startHTTP(false);
+} else {
+  dns.bind(DNS_PORT, '0.0.0.0', () => {
+    startHTTP(true);
+  });
+}
