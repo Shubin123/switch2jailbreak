@@ -10,7 +10,7 @@ proof of console compatibility, or independent hardware reproduction.
 
 ## Coverage and source identity
 
-The walkthrough covered these 20 complete text files (1,946 lines including
+The walkthrough covered these 26 complete text files (2,128 lines including
 comments and manifest data). The audit report records each file's SHA256 and
 line count. These identify the reviewed sources, not the correctness of them.
 
@@ -36,6 +36,12 @@ line count. These identify the reviewed sources, not the correctness of them.
 | `engine/switch2/ro/export-handle.cjs` | Handle range, notifier identity, substitution and conditional restoration around the copy request |
 | `engine/switch2/ro/bind-sessions.cjs` | Heap/session bounds, unique server bindings, domain ID bounds and adapter-type matching |
 | `engine/switch2/ro/copy-loader-root.cjs` | Manager/owner identity, reference-count challenges, temporary slot substitution and readback evidence |
+| `engine/shared/ipc.cjs` | Descriptor widths, packet capacity, reply framing and malformed input |
+| `engine/switch2/memory/session.cjs` | Initialization failure cleanup and deferred session/tool dependencies |
+| `engine/switch2/memory/cache-mount.cjs` | Borrowed mount ownership, live name/list guards, SDK failure recording and refresh ordering |
+| `engine/switch2/memory/cache-mount-sdk.json` | Declared offsets and instruction lengths, not independently authenticated SDK provenance |
+| `engine/switch2/retained/cache-shape.cjs` | Exact cache-array length and conservative unused-tail recognition |
+| `engine/switch2/retained/links.cjs` | Page-aligned candidate filtering, width/proximity bounds and zero-tail observations |
 
 The C payload's fixed output is 24 64-bit words. Its largest declared reply is
 184 bytes; with the response's 48-byte prefix this occupies 232 bytes of the
@@ -54,7 +60,8 @@ It neither calls a console nor
 executes the resulting native instructions. Transport methods are replaced by
 throwing stubs or deterministic in-memory responses for the interface checks.
 
-The report contains 23 separately accounted checks:
+The report contains 29 separately accounted checks (the original 23 plus six
+cache/protocol checks described below):
 
 1. Synthetic ELF packaging and independent segment validation.
 2. Rejection of truncated ELF headers.
@@ -240,6 +247,55 @@ dumps were published in this review, and the host umask was not changed.
 Status: **static local-evidence/permissions boundary**. Handle ownership,
 reference-count changes and real session concurrency still require target
 evidence; passing the notifier mocks cannot establish those properties.
+
+### NR-11 — Cache lifecycle checks do not guarantee remount or cleanup
+
+The cache unmount helper checks the live mount name and both self-linked open
+file/directory lists before writing its scratch name or invoking the SDK. Mocked
+missing, renamed and busy mounts make neither call. A failed SDK result is
+recorded and rejected; success alone does not remount the cache. The mount
+helper records its SDK result before refreshing through a subprocess, so a
+refresh failure can occur after successful remount. No subprocess or SDK code
+was executed in these mocks. The helper does not close borrowed handles.
+
+The memory session initializer calls cleanup on initialization/tool-install
+failure, but a cleanup exception can replace the original failure. This is a
+static observation; the transitive session implementation remains outside this
+increment's review. SDK JSON offsets and signature lengths are structurally
+checked; its declared digest is not independently bound to a device SDK image.
+
+Status: **host-reproduced pre-call rejection and result-recording order; no
+device recovery claim**. The enclosing runner's complete restoration behavior
+still requires review and independent target evidence.
+
+### NR-12 — Candidate recognition and protocol parsing have limited authority
+
+The cache-tail predicate requires exactly 0x5a0 bytes and accepts zero unused
+space or narrowly recognized pathname residue. Tests reject unknown bytes,
+wrong lengths and nonzero data after termination. The link scanner filters
+aligned 39-bit candidates near its seed, but returns nonzero-tail candidates
+with `zeroTail: false`; a candidate is not proof of a valid mapping or owner.
+
+CMIF tests reject out-of-width descriptors, unsupported modes, excessive
+descriptor counts, oversized payloads, truncated replies and missing reply
+magic. The reply parser does not enforce the raw-data length advertised in the
+header and returns the remaining buffer after the CMIF prefix. Thus these
+checks are not comprehensive wire validation. Copies in outgoing packets are
+coerced to unsigned 32-bit values, not independently authenticated handles.
+Malformed frames may raise generic Buffer range errors rather than a protocol
+error. No target packets were sent.
+
+Status: **host-checked structural boundaries, not complete protocol validation**.
+The six added checks cover SDK declarations, descriptor/packet rejection,
+reply rejection, tail recognition, link filtering and mocked cache unmount.
+They neither execute generated instructions nor establish protocol ABI validity.
+
+Local validation on October 27, 2026: 29/29 native audit checks and 28/28 host
+regression tests pass; compatibility exports validate. Desktop browser controls
+pass for Chromium and WebKit, but Firefox fails at process launch with
+`Could not find profile folder` (12/13 browser subtests pass). This is recorded
+as a local browser failure, not silently skipped or counted as console evidence.
+CI results must be reported separately for the pushed revision.
 
 ## Reproduce without a console
 

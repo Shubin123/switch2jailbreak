@@ -97,7 +97,7 @@ and a full security review remain pending.
 Follow-up evidence: [verification review](docs/security-review.md) and
 [reproducible workspace release protocol](docs/release.md). Desktop Chromium,
 Firefox and WebKit controls now pass in Linux CI; this is not console validation.
-The [core native review](docs/native-review.md) adds 23 host-only audit checks
+The [core native review](docs/native-review.md) adds 29 host-only audit checks
 and source-level findings without claiming the remaining chain has been audited.
 
 - [x] **Phase 1** — Baseline report and claims inventory (`docs/baseline.md`)
