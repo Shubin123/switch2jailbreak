@@ -17,11 +17,19 @@ complete audit of upstream native exploit code or console security.
 | Branch/tag checks ignored pagination and names | Branch substitutions or later-page changes could be missed | Traverse pagination with loop/limit guards; compare sorted names and commit IDs |
 | Browser suites shared lexical declarations | Suites failed to load together | Isolated scripts; shared-context regression test |
 | Browser-only observations failed on Node.js | Host limitations looked like software regressions | Explicit applicability skips; negative browser observations remain failures |
+| Native manifest could authorize altered image | Tampered segment structures accepted if outer manifest recomputed | Structural validation of container magic, flags, segment bounds, memory alignment, and segment/module digests |
+| Source inspection vulnerable to symlinks or assume-unchanged | Tampered source files could hide from git status | Direct git blob cat-file hash comparison for every tracked file; reject symlinks and dirty trees |
+| SharedArrayBuffer exposed without cross-origin isolation | Isolation state could be misclassified | Correlate SharedArrayBuffer strictly with verified COOP/COEP headers; block outbound network requests via CSP |
+| Mutating worker launch could execute unreviewed payload | Incomplete launch configuration could reach device | Enforce unreleased launch discard replacing payload with read-only application-PID query |
+| Failed domain conversion could leak temporary handles | Unclosed locator handles could exhaust session limits | Wrap locator conversion in catch block with guaranteed handle closure and state rollback |
+| Interrupted donor cleanup could leave dangling mounts | Filesystem handles could remain open across runs | Wrap mounted filesystem cleanup in finally block ensuring handle closure |
 
 ## Observed validation
 
-- Local regression run: 15 tests passed, zero failures (includes synthetic
-  negative fixtures; those deliberately exercise verifier rejection).
+- Local regression run: 28 tests passed across all 8 host suites, zero failures
+  (includes synthetic negative fixtures exercising verifier rejection).
+- Native review audit: 36 host-only boundary and lifecycle checks passed, zero
+  failures, covering 36 complete source files (3,244 lines).
 - Live monitor inspected the pinned README, complete branch/tag listings,
   Gist metadata and blog content. Only `main` and no tags were returned.
 - Live pinned upstream host suite: 11 passing tests.
@@ -77,13 +85,28 @@ weakened to make a check pass.
 ## Native review follow-up
 
 `native-review.md` now records a complete walkthrough of the core payload C,
-assembly, linker layout, builder, loader gates and selected host interfaces
-(20 text files). The host-only audit runs 23 boundary/container/assembly and
-mocked lifecycle checks, preserves
-per-file source hashes, and is required by CI before source packaging. It does
-not execute a console payload. The report distinguishes kernel assumptions,
-an unconfirmed descriptor-cleanup concern, partial table discovery, and
-conditional restoration from
-verified hardware results. Remaining native-chain coverage and console evidence
-keep Phase 4 open. Source/evidence prereleases are recorded separately in
-`release.md` and `phase-status.md`; the older snapshots above are historical.
+assembly, linker layout, builder, memory session, cache mount, link filtering,
+and the entire native RO orchestration and cleanup suite (36 text files, 3,244
+lines). The host-only audit runs 36 boundary/container/assembly and mocked
+lifecycle checks, preserves per-file source hashes, and is required by CI before
+source packaging. It does not execute a console payload.
+
+The review establishes 14 documented security, isolation, and recovery findings
+(NR-01 through NR-14):
+1. **NR-01**: Kernel metadata (PID, mapping addresses, permissions) is an unverified trust assumption on the host.
+2. **NR-02**: Descriptors and transferred handle cleanup limits outside the supported subset.
+3. **NR-03**: Memory and permission mutations are conditional, not transactional across failures.
+4. **NR-04**: Host bridge and loopback bearer tokens are local trust boundaries without remote attestation.
+5. **NR-05**: Verification flags and handle cleanup are distinct evidence paths; errors avoid issuing IPC to timed-out workers.
+6. **NR-06**: Session gate unparking occurs before retirement snapshot verification; signal errors do not produce retirement evidence.
+7. **NR-07**: Domain lookup uses a bounded 0x4000-byte search window (341 slots) rather than the full 16,384-slot declared table.
+8. **NR-08**: Persistence steps share failure paths with cleanup; save failures can block subsequent restoration calls.
+9. **NR-09**: Temporary slot/notifier substitutions have conditional rollback coverage only after initial writes succeed.
+10. **NR-10**: Session binding records represent local host observations rather than durable target-authenticated tokens.
+11. **NR-11**: Cache lifecycle checks and unmount preflight do not guarantee remount or closed handles.
+12. **NR-12**: Retained candidate link recognition and CMIF protocol validation operate within structural bounds, not full ABI proofs.
+13. **NR-13**: Foreign worker synchronization cancellation and launch discard operate within concurrency/timing windows on target.
+14. **NR-14**: Temporary locator and donor filesystem lifecycles enforce local cleanup in finally/catch blocks, but device storage rollback remains conditional on app restart.
+
+Remaining native-chain coverage and independent console evidence keep Phase 4 open.
+Source/evidence prereleases are recorded separately in `release.md` and `phase-status.md`.
