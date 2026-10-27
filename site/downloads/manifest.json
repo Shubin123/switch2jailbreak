@@ -1,0 +1,9 @@
+{
+  "revision": "95f5525089273c5fce0b95047f3600f8442e96ae",
+  "archive": "ns2jb-95f5525089273c5fce0b95047f3600f8442e96ae.tar.gz",
+  "sha256": "381f1eae56416a3bb5a3dd8105c4242958967e7a1346e328c4685b4c614abdf9",
+  "bytes": 133558,
+  "route": "SmileBASIC 4.4.9 + Node.js host; not browser-executable",
+  "hardwareValidatedByWorkspace": false,
+  "checksumException": "Upstream README.md has the exact reviewed mismatch documented in docs/security-review.md; all other manifest entries must match."
+}

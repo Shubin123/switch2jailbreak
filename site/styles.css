@@ -1,5 +1,6 @@
 :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #0b1116; color: #e6edf3; line-height: 1.65; }
 * { box-sizing: border-box; }
+code { overflow-wrap: anywhere; }
 body { margin: 0; }
 .wrap { width: min(1120px, 90%); margin-inline: auto; }
 a { color: #91ded0; text-underline-offset: 5px; }

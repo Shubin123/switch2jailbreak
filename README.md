@@ -128,6 +128,16 @@ Preview locally with `python3 -m http.server 8000 --bind 127.0.0.1 --directory s
 and open `http://127.0.0.1:8000`. Keep the dated site summary aligned with
 `docs/phase-status.md` when evidence changes; publishing does not close any gate.
 
+### Hardware test package
+
+`site/hardware-testing.html` provides a complete pinned upstream download and
+manual preflight notes, not a browser exploit or automatic console launcher.
+Regenerate the download with `bash scripts/package-hardware.sh /path/to/ns2jb`.
+The packager checks the configured upstream revision and its checksums, archives
+committed files only, and writes an archive digest and manifest to
+`site/downloads/`. It never starts the host runner or contacts a console.
+Preserved upstream claims are not independent workspace hardware evidence.
+
 ## References
 
 - [Author's technical write-up](https://pepsipu.com/blog/2026-10-switch2-jailbreak-ns2jb/)
