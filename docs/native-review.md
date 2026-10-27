@@ -10,7 +10,7 @@ proof of console compatibility, or independent hardware reproduction.
 
 ## Coverage and source identity
 
-The walkthrough covered these 14 complete text files (1,365 lines including
+The walkthrough covered these 17 complete text files (1,790 lines including
 comments and manifest data). The audit report records each file's SHA256 and
 line count. These identify the reviewed sources, not the correctness of them.
 
@@ -30,6 +30,9 @@ line count. These identify the reviewed sources, not the correctness of them.
 | `engine/switch2/process/fs-execute.cjs` | Original-byte checks, challenge/readback verification, conditional restoration and evidence retention |
 | `engine/switch2/ro/runtime.cjs` | Current-session identity, activation ordering, saved pending steps and idle-session handoff checks |
 | `engine/switch2/ro/probe.cjs` | Random challenge, kernel/reply PID matching, monotonic ticks, worker timeout and handle cleanup |
+| `engine/switch2/ro/layout.cjs` | Capture bounds and digest, boot binding, live identity checks, bounded thread walk and table search window |
+| `engine/switch2/ro/gate.cjs` | Session identity guards, pending selection tracking, compare-before-write calls, grouped restoration and event retirement evidence |
+| `engine/switch2/ro/launch.cjs` | Target/mount/type checks, bounded request loop, two-reference exchange, partial rollback and restoration ordering |
 
 The C payload's fixed output is 24 64-bit words. Its largest declared reply is
 184 bytes; with the response's 48-byte prefix this occupies 232 bytes of the
@@ -48,7 +51,7 @@ It neither calls a console nor
 executes the resulting native instructions. Transport methods are replaced by
 throwing stubs or deterministic in-memory responses for the interface checks.
 
-The report contains 16 separately accounted checks:
+The report contains 20 separately accounted checks:
 
 1. Synthetic ELF packaging and independent segment validation.
 2. Rejection of truncated ELF headers.
@@ -66,9 +69,13 @@ The report contains 16 separately accounted checks:
 13. Bounded transfer chunks and rejection of failed native return values.
 14. Transport closure even when the final shutdown write fails.
 15. Execution-proof success and rejection of wrong kernel PID, nonce, tick and failed service lookup, using in-memory transport and evidence storage.
-16. Zig 0.15.2 assembly of the test fixture matching its shipped bytes.
+16. Layout boot binding, live object identity rejection and captured-table search-window behavior.
+17. Gate identity/wait-word rejection and contiguous waiter-array guard, before writes.
+18. Refusal to restore unsettled or selected sessions and incompatible grouped gates.
+19. Failed event signaling leaves no successful snapshot-retirement evidence.
+20. Zig 0.15.2 assembly of the test fixture matching its shipped bytes.
 
-Local run: **16 pass, zero failures, zero skips/errors**. Four additional
+Local run: **20 pass, zero failures, zero skips/errors**. Four additional
 offline regression tests exercise the audit validator itself, including
 corrupt internal hashes despite a recomputed outer manifest, wrong/dirty source
 trees, and symlink rejection. The normal CI build gate repeats the pinned audit
@@ -144,6 +151,50 @@ activation nor handoff was executed during this review.
 Status: **source-backed lifecycle limitation, not a reproduced device fault**.
 Consumers must retain the full proof, error, pending and close fields rather
 than interpreting a single verification flag as successful restoration.
+
+### NR-06 — Unparked does not establish completed restoration
+
+The event-backed gate restores the wait word and sets `parked = false` before
+checking the signal result or observing retirement of the old wait snapshot.
+Grouped restoration also clears the parked flags before signaling. A signal
+failure can therefore leave a gate marked unparked without a `restoration`
+record. A mock verifies this exact single-gate failure path, including the
+issued write and absence of retirement evidence. Other mocks verify refusal
+before writes for changed identity fields, unsettled/selected sessions and
+incompatible grouped gates. These are host state-machine observations, not
+proof that the kernel wait state has changed or can safely be retried.
+
+Status: **source-backed evidence limitation**. Preserve errors and require the
+explicit retirement evidence; do not treat `parked: false` as a recovery test.
+
+### NR-07 — Captured domain lookup uses a partial search window
+
+The layout finder requires a declared domain capacity of `0x4000` but searches
+only `0x4000` bytes of 0x30-byte entries: 341 complete entries, not all 16,384
+declared slots. A synthetic capture locates a matching entry at index zero,
+then fails discovery when the same entry is moved to index 512 while still
+inside the supplied capture. This establishes a search-window limitation, not
+a universal failure on the intended firmware or a reason to change the scan
+without target evidence. Live identity checks are separate and do reject
+changed manager, entry, domain and object fields in the mock.
+
+Status: **host-reproduced discovery limitation**. A missing/ambiguous root is
+not evidence that the entire domain table was inspected or no root exists.
+
+### NR-08 — Persistence and cleanup share failure paths
+
+The launch path exchanges two existing references with an explicit rollback
+attempt if the second write fails. It does not promise rollback after every
+later readback or persistence failure. Its `finally` block saves the outstanding
+step before invoking gate restoration; a failed save can prevent that restore
+call. A later restore error can also replace the primary exception. These
+ordering observations come from static source review; the launch path and
+filesystem fault injection were not executed here.
+
+Status: **source-backed failure-ordering concern, not a reproduced device
+fault**. The complete saved exchange/write/rollback/restoration fields and
+transport state are necessary when interpreting a failed run. Successful host
+parser checks do not establish transactional recovery.
 
 ## Reproduce without a console
 

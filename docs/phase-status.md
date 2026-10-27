@@ -10,7 +10,7 @@ Phase 4 is open.
 | Phase 1: research baseline | `docs/baseline.md`, research log, target configuration | Complete as a source-backed inventory, not independent hardware proof |
 | Phase 2: upstream/build verification | Pinned commit, 11 host tests, checksum policy, payload manifest, Zig 0.15.2 byte-for-byte rebuild; Linux and macOS results agree | Complete for host/build scope |
 | Phase 3: compatibility harness | 55 observations, applicability handling, validated JSON exports, three real desktop engines, missing/malformed-suite controls | Harness complete; target-console observations unavailable |
-| Phase 4: security/isolation review | `docs/security-review.md`, `docs/native-review.md`, documented boundaries, negative fixtures, real CSP/COOP/COEP controls, core payload/activation/probe walkthrough and 16 host-only native checks | Partial; remaining native-chain paths and independent console validation remain open |
+| Phase 4: security/isolation review | `docs/security-review.md`, `docs/native-review.md`, documented boundaries, negative fixtures, real CSP/COOP/COEP controls, core payload/activation/probe/loader-gate walkthrough and 20 host-only native checks | Partial; remaining native-chain paths and independent console validation remain open |
 | Phase 5: reproducible workspace release | Two local source packages match; independent Linux/macOS archives match; extracted archive regressions pass; tagged prerelease includes checksums and preserved CI evidence | Complete for workspace source/evidence publication; no jailbreak or hardware claim |
 
 ## Priority mapping

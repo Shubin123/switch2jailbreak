@@ -21,6 +21,9 @@ const sourceFiles = Object.freeze([
   'engine/switch2/process/fs-execute.cjs',
   'engine/switch2/ro/runtime.cjs',
   'engine/switch2/ro/probe.cjs',
+  'engine/switch2/ro/layout.cjs',
+  'engine/switch2/ro/gate.cjs',
+  'engine/switch2/ro/launch.cjs',
 ]);
 const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 const reviewedRevision = '95f5525089273c5fce0b95047f3600f8442e96ae';
@@ -292,6 +295,126 @@ async function reviewNative(root, expectedRevision, zig = 'zig') {
       }
     }
   });
+  await check('Layout checks enforce live identity, boot binding and the observed capture window', async () => {
+    const exported = { exports: {} };
+    const imports = {
+      'node:fs/promises': { async writeFile() { throw Error('Unexpected layout persistence'); } },
+      'node:path': path, 'node:crypto': crypto,
+      '../tools/fs-memory.cjs': { async connect() { throw Error('Unexpected console connection'); } },
+    };
+    const context = vm.createContext({
+      module: exported, __dirname: '/host-fixture', Buffer,
+      require(name) { assert.ok(Object.hasOwn(imports, name), `Unexpected layout import: ${name}`); return imports[name]; },
+    });
+    new vm.Script(fs.readFileSync(path.join(root, 'engine/switch2/ro/layout.cjs'), 'utf8')).runInContext(context);
+    const memory = {
+      reportFile: 'current-report', info: { session: 'current-session' },
+      async read() { throw Error('Unexpected memory read'); },
+    };
+    for (const layout of [
+      { report: 'old-report', session: 'current-session' },
+      { report: 'current-report', session: 'old-session' },
+    ]) await assert.rejects(exported.exports.validate(memory, layout), /another boot/);
+    assert.throws(() => exported.exports.capturedLayout(Buffer.alloc(0x100), { address: 0x2000000 }), /not unique/);
+    const layout = { report: memory.reportFile, session: memory.info.session, manager: 0x1000,
+      count: 0x4000, table: 0x6000, rootVptr: 0x5000,
+      target: { entry: 0x2000, domain: 0x3000, object: 0x4000 } };
+    const blocks = new Map([[0x1000, Buffer.alloc(0x20)], [0x2000, Buffer.alloc(0x30)],
+      [0x3000, Buffer.alloc(0x20)], [0x4000, Buffer.alloc(0x40)]]);
+    for (const [address, offset, value] of [[0x1000, 0x18, layout.table],
+      [0x2000, 0x18, layout.target.domain], [0x2000, 0x20, layout.target.object],
+      [0x2000, 0x28, layout.rootVptr + 0x5880], [0x3000, 0, layout.rootVptr + 0x28e0],
+      [0x3000, 8, layout.rootVptr + 0x2938], [0x3000, 0x18, layout.manager],
+      [0x4000, 0, layout.rootVptr + 0x1ea0], [0x4000, 0x30, 1]])
+      blocks.get(address).writeBigUInt64LE(BigInt(value), offset);
+    blocks.get(0x1000).writeUInt32LE(layout.count, 0x10);
+    blocks.get(0x4000).writeUInt32LE(2, 0x38);
+    memory.read = async (address, length) => {
+      assert.ok(blocks.has(address));
+      assert.equal(blocks.get(address).length, length);
+      return Buffer.from(blocks.get(address));
+    };
+    await exported.exports.validate(memory, layout);
+    for (const [address, offset, message] of [[0x1000, 0x10, /manager changed/],
+      [0x2000, 0x20, /entry differs/], [0x3000, 0x18, /domain changed/], [0x4000, 0x30, /object identity differs/]]) {
+      const block = blocks.get(address);
+      block[offset] ^= 1;
+      await assert.rejects(exported.exports.validate(memory, layout), message);
+      block[offset] ^= 1;
+    }
+    const capture = Buffer.alloc(0xd0000), range = { address: 0x2000000 };
+    const rootVptr = range.address + 0x500000 - 0xf38be0;
+    for (const [offset, value] of [[0x100, rootVptr + 0x28e0], [0x108, rootVptr + 0x2938],
+      [0x118, range.address + 0x200], [0x218, range.address + 0x1000],
+      [0x1018, range.address + 0x100], [0x1020, range.address + 0x800], [0x1028, rootVptr + 0x5880]])
+      capture.writeBigUInt64LE(BigInt(value), offset);
+    capture.writeUInt32LE(0x4000, 0x210);
+    assert.equal(exported.exports.capturedLayout(capture, range).target.entry, range.address + 0x1000);
+    capture.copy(capture, 0x1000 + 512 * 0x30, 0x1000, 0x1030);
+    capture.fill(0, 0x1000, 0x1030);
+    assert.throws(() => exported.exports.capturedLayout(capture, range), /Loader root is not unique/);
+  });
+  const { Gate, restoreGates } = require(path.join(root, 'engine/switch2/ro/gate.cjs'));
+  const gateFixture = () => {
+    const bytes = Buffer.alloc(0x88), writes = [], requests = [];
+    const row = { address: 0x1000, domain: 0x2000, metadata: 0x3000, receive: 7, request: 0x4000, wait: 7 };
+    const waiters = Array.from({ length: 7 }, (_, index) => 0x5000 + index * 0x110);
+    const event = { sourceHandle: 8, read: 9, write: 10 };
+    for (const [offset, value] of [[0, 0x6000], [0x28, waiters[0]], [0x60, row.request],
+      [0x68, 0x100], [0x70, row.domain], [0x78, row.metadata]]) bytes.writeBigUInt64LE(BigInt(value), offset);
+    bytes.writeUInt32LE(event.sourceHandle, 0x30);
+    bytes.writeUInt32LE(1, 0x40);
+    bytes.writeUInt32LE(row.receive, 0x48);
+    row.raw = bytes.toString('hex');
+    const memory = {
+      async read(address, length) { assert.equal(address, row.address); assert.equal(length, bytes.length); return Buffer.from(bytes); },
+      async write(...args) { writes.push(args); },
+      async u64() { return 1n; },
+      async request(request) { requests.push(request); return { result: 1 }; },
+    };
+    const gate = new Gate(memory, row, [], waiters, 11, event);
+    gate.parked = true;
+    return { gate, bytes, writes, requests };
+  };
+  await check('Gate inspection rejects changed session identity fields before writes', async () => {
+    for (const offset of [0, 0x30, 0x48, 0x60, 0x68, 0x70, 0x78]) {
+      const fixture = gateFixture();
+      fixture.bytes[offset] ^= 1;
+      await assert.rejects(fixture.gate.inspect(), /session changed|wait word changed/);
+      assert.equal(fixture.writes.length, 0);
+      assert.equal(fixture.requests.length, 0);
+    }
+    const fixture = gateFixture();
+    fixture.gate.waiters[1] += 1;
+    assert.throws(() => new Gate(fixture.gate.memory, fixture.gate.row, [], fixture.gate.waiters, 11,
+      fixture.gate.event), /contiguous native waiter/);
+  });
+  await check('Gate restoration rejects unsettled, pending and incompatible grouped sessions', async () => {
+    const unsettled = gateFixture();
+    unsettled.bytes.writeUInt32LE(2, 0x40);
+    await assert.rejects(unsettled.gate.restore(), /unsettled session/);
+    assert.equal(unsettled.writes.length, 0);
+    const pending = gateFixture();
+    pending.gate.outstanding = { original: '00000000' };
+    pending.gate.selections = async () => [pending.gate.row.address];
+    await assert.rejects(pending.gate.restore(), /selection remains pending/);
+    assert.equal(pending.writes.length, 0);
+    const first = gateFixture(), second = gateFixture();
+    await assert.rejects(restoreGates([first.gate, second.gate]), /sharing one parking event/);
+    assert.equal(first.writes.length + second.writes.length, 0);
+  });
+  await check('Failed restoration signal does not create retirement evidence', async () => {
+    const fixture = gateFixture();
+    await assert.rejects(fixture.gate.restore(), /event did not signal/);
+    assert.equal(fixture.writes.length, 1);
+    assert.equal(fixture.writes[0][0], fixture.gate.row.address + 0x30);
+    assert.equal(fixture.writes[0][1].readUInt32LE(), fixture.gate.event.sourceHandle);
+    assert.equal(fixture.writes[0][2].readUInt32LE(), fixture.gate.row.wait);
+    assert.equal(fixture.requests.length, 1);
+    assert.equal(fixture.requests[0].command, 'root-native-event-signal');
+    assert.equal(fixture.gate.parked, false);
+    assert.equal(fixture.gate.restoration, undefined);
+  });
   await check('Assembly test fixture rebuild matches shipped bytes', () => {
     assert.equal(execFileSync(zig, ['version'], { encoding: 'utf8' }).trim(), '0.15.2');
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'native-assembly-'));
@@ -306,7 +429,7 @@ async function reviewNative(root, expectedRevision, zig = 'zig') {
     }
   });
 
-  assert.equal(results.length, 16, 'Native audit case coverage is incomplete');
+  assert.equal(results.length, 20, 'Native audit case coverage is incomplete');
   assert.deepEqual(inspectSource(root, expectedRevision), inspected, 'Upstream source changed during audit');
   const count = status => results.filter(result => result.status === status).length;
   return {
