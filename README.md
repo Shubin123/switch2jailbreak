@@ -115,13 +115,14 @@ source prerelease does not establish those missing results.
 
 `site/index.html` is a static, script-free evidence summary. It explicitly keeps
 Phase 4 open and does not run a browser harness or console payload. Only `site/`
-is uploaded by `.github/workflows/pages.yml`; raw workspace files are not served.
+is published to the `gh-pages` branch; raw workspace files are not served.
 
-To publish, select **Settings → Pages → Build and deployment → Source → GitHub
-Actions**, then push these changes to `main`. The **Publish status site** workflow
-also supports manual runs once it is on the default branch. No deployment is
-performed by local edits alone. Review the repository's visibility and intended
-publication audience before enabling Pages.
+Pages uses **Deploy from a branch**, with `gh-pages` and `/ (root)` selected.
+There is no custom Pages Actions workflow. GitHub may still use its own internal
+Pages build/deployment job. To update the site, publish the contents of `site/`
+to the root of `gh-pages`, including an empty `.nojekyll` file. Pushing changes
+only to `main` does not update the published site. Review the repository's
+visibility and intended publication audience before enabling Pages.
 
 Preview locally with `python3 -m http.server 8000 --bind 127.0.0.1 --directory site`
 and open `http://127.0.0.1:8000`. Keep the dated site summary aligned with
