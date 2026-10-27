@@ -28,8 +28,8 @@ complete audit of upstream native exploit code or console security.
 
 - Local regression run: 28 tests passed across all 8 host suites, zero failures
   (includes synthetic negative fixtures exercising verifier rejection).
-- Native review audit: 36 host-only boundary and lifecycle checks passed, zero
-  failures, covering 36 complete source files (3,244 lines).
+- Native review audit: 98 host-only boundary and lifecycle checks passed, zero
+  failures, covering all 95 tracked upstream files (9,128 lines).
 - Live monitor inspected the pinned README, complete branch/tag listings,
   Gist metadata and blog content. Only `main` and no tags were returned.
 - Live pinned upstream host suite: 11 passing tests.
@@ -86,13 +86,15 @@ weakened to make a check pass.
 
 `native-review.md` now records a complete walkthrough of the core payload C,
 assembly, linker layout, builder, memory session, cache mount, link filtering,
-and the entire native RO orchestration and cleanup suite (36 text files, 3,244
-lines). The host-only audit runs 36 boundary/container/assembly and mocked
-lifecycle checks, preserves per-file source hashes, and is required by CI before
-source packaging. It does not execute a console payload.
+retained memory/cache subsystem, and the entire native RO orchestration and
+cleanup suite plus domain/stage helpers, orchestration/protocol layer, app
+layer, tools and remaining infrastructure (all 95 tracked files, 9,128 lines). The
+host-only audit runs 98 boundary/container/assembly, mocked lifecycle,
+memory-subsystem, orchestration/protocol, app-layer and tools checks, preserves per-file source hashes, and is required by
+CI before source packaging. It does not execute a console payload.
 
-The review establishes 14 documented security, isolation, and recovery findings
-(NR-01 through NR-14):
+The review establishes 15 documented security, isolation, and recovery findings
+(NR-01 through NR-15):
 1. **NR-01**: Kernel metadata (PID, mapping addresses, permissions) is an unverified trust assumption on the host.
 2. **NR-02**: Descriptors and transferred handle cleanup limits outside the supported subset.
 3. **NR-03**: Memory and permission mutations are conditional, not transactional across failures.
@@ -107,6 +109,21 @@ The review establishes 14 documented security, isolation, and recovery findings
 12. **NR-12**: Retained candidate link recognition and CMIF protocol validation operate within structural bounds, not full ABI proofs.
 13. **NR-13**: Foreign worker synchronization cancellation and launch discard operate within concurrency/timing windows on target.
 14. **NR-14**: Temporary locator and donor filesystem lifecycles enforce local cleanup in finally/catch blocks, but device storage rollback remains conditional on app restart.
+15. **NR-15**: Upstream retained-memory accepts a repeated metadata capture shorter than requested; the workspace verifier rejects it (host-reproduced divergence, not a confirmed device fault).
 
-Remaining native-chain coverage and independent console evidence keep Phase 4 open.
+The domain/stage follow-up adds structural reply bounds and mocked exclusive-log,
+timeout, failure and no-replay checks. Accepted stage result JSON remains a local
+trust input, not authenticated target evidence. All 11 engine JSON assets pass
+separate structural checks; four unbound digests and captured SDK provenance are
+not verified. See `native-review.md` for exact scope.
+
+The browser-entry form has a `connect-src 'none'` meta CSP, no storage or upload
+operations, bounded metadata and optional presence-only checks. A strict separate
+schema forbids claiming authenticated identity, native execution, recovery or
+Phase 4 completion. Chromium and WebKit desktop controls verify export, download,
+CSP fetch blocking and a no-JavaScript fallback. The local Firefox launch failure
+remains explicit; no new Linux CI success or target-browser result is claimed.
+
+All 95 tracked upstream files now have recorded walkthrough entries. Independent
+console evidence keeps Phase 4 open.
 Source/evidence prereleases are recorded separately in `release.md` and `phase-status.md`.

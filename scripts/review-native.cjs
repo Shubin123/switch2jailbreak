@@ -5,6 +5,8 @@ const os = require('node:os');
 const path = require('node:path');
 const vm = require('node:vm');
 const { execFileSync } = require('node:child_process');
+const { EventEmitter } = require('node:events');
+const { memorySourceFiles, reviewMemoryBoundaries } = require('./native-memory-checks.cjs');
 
 const sourceFiles = Object.freeze([
   'engine/build-payload.cjs',
@@ -28,6 +30,8 @@ const sourceFiles = Object.freeze([
   'engine/switch2/ro/bind-sessions.cjs',
   'engine/switch2/ro/copy-loader-root.cjs',
   'engine/shared/ipc.cjs',
+  'engine/shared/domain.cjs',
+  'engine/shared/stages.cjs',
   'engine/switch2/memory/session.cjs',
   'engine/switch2/memory/cache-mount.cjs',
   'engine/switch2/memory/cache-mount-sdk.json',
@@ -43,9 +47,104 @@ const sourceFiles = Object.freeze([
   'engine/switch2/ro/test-gate.cjs',
   'engine/switch2/ro/test-sm.cjs',
   'engine/switch2/ro/install-retained.cjs',
+  ...memorySourceFiles,
+  'engine/shared/frames.cjs',
+  'engine/shared/rpc.cjs',
+  'engine/switch2/pipeline.cjs',
+  'engine/switch2/acquire.cjs',
+  'run.cjs',
+  'engine/lib/qualify.cjs',
+  'engine/switch2/retained/find-metadata.cjs',
+  'engine/switch2/process/bind-notifier.cjs',
+  'engine/switch2/process/qualify.cjs',
+  'engine/switch2/memory/normalized-path.cjs',
+  'engine/switch2/memory/paths.cjs',
+  'engine/switch2/memory/native-links.cjs',
+  'engine/switch2/tools/endpoint.cjs',
+  'engine/switch2/tools/fs-memory.cjs',
+  'engine/switch2/tools/fs-root-pid.cjs',
+  'engine/switch2/cleanup-scratch.cjs',
+  'test.cjs',
+  'bootstrap.bas',
+  'SHA256SUMS',
+  'engine/switch2/process/test-function.bin',
+  'engine/switch2/ro/payload/main',
+  'engine/switch2/app/session.cjs',
+  'engine/switch2/app/worker.cjs',
+  'engine/switch2/app/events.cjs',
+  'engine/switch2/app/domain.cjs',
+  'engine/switch2/app/rpc.cjs',
+  'engine/switch2/app/filesystem.cjs',
+  'engine/switch2/app/map.cjs',
+  'engine/switch2/app/native-worker.cjs',
+  'engine/switch2/app/qualify.cjs',
+  'engine/switch2/app/timing.cjs',
+  'engine/switch2/app/affinity.cjs',
+  'engine/switch2/app/bulk-transfer.cjs',
+  'engine/switch2/app/inspect-mounts.cjs',
+  'engine/switch2/app/mounted-save.cjs',
+  'engine/switch2/memory/capture-workers.cjs',
+  'engine/switch2/memory/fs-memory-control.cjs',
+  'engine/switch2/memory/fs-root-control.cjs',
+  'engine/switch2/memory/mounted-rom.cjs',
+  'engine/switch2/memory/probe-reserved-gap.cjs',
+  'engine/switch2/memory/run-control.cjs',
+  'engine/shared/sdk-functions.json',
+  'engine/shared/sdk-layout.json',
+  'engine/switch2/app/compat-affinity-reference.json',
+  'engine/switch2/app/event-code.json',
+  'engine/switch2/app/hash-code.json',
+  'engine/switch2/app/sdk-proxy-code.json',
+  'engine/switch2/app/thread-code.json',
+  'engine/switch2/app/thread-scheduling-reference.json',
+  'engine/switch2/app/timing-code.json',
+  'README.md',
 ]);
 const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 const reviewedRevision = '95f5525089273c5fce0b95047f3600f8442e96ae';
+
+function stageFixture(source, outcome, resultFile = '/synthetic-review/session/result.json') {
+  const calls = { opened: [], spawned: [], killed: [], read: [], closed: 0, timers: [] };
+  const content = Buffer.from(JSON.stringify({ file: resultFile }) + '\n');
+  const log = {
+    fd: 42,
+    async stat() { return { size: content.length }; },
+    async read(buffer) { content.copy(buffer); },
+    async close() { calls.closed += 1; },
+  };
+  const dependencies = {
+    'node:path': path,
+    'node:fs/promises': {
+      async open(...args) { calls.opened.push(args); return log; },
+      async readFile(filename) { calls.read.push(filename); return '{"verified":"host-fixture"}'; },
+    },
+    'node:child_process': {
+      spawn(...args) {
+        calls.spawned.push(args);
+        const child = new EventEmitter();
+        child.kill = signal => calls.killed.push(signal);
+        queueMicrotask(() => {
+          if (outcome === 'timeout') calls.timers[0].run();
+          if (outcome === 'error') child.emit('error', Error('Synthetic spawn failure'));
+          else child.emit('close', outcome === 'failure' ? 1 : 0);
+        });
+        return child;
+      },
+    },
+  };
+  const context = {
+    module: { exports: {} }, Buffer, process: { execPath: process.execPath },
+    console: { log() {} },
+    require(name) {
+      assert.ok(Object.hasOwn(dependencies, name), `Unexpected stage dependency: ${name}`);
+      return dependencies[name];
+    },
+    setTimeout(run, delay) { const timer = { run, delay, cleared: false }; calls.timers.push(timer); return timer; },
+    clearTimeout(timer) { if (timer) timer.cleared = true; },
+  };
+  vm.runInNewContext(source, context, { timeout: 1000, filename: 'reviewed-stages.cjs' });
+  return { stage: context.module.exports, calls };
+}
 
 function elfFixture() {
   const names = Buffer.from('\0.text\0.rodata\0.data\0.shstrtab\0');
@@ -967,6 +1066,538 @@ async function reviewNative(root, expectedRevision, zig = 'zig') {
     const cleanRes = await processTestMod.dispatch(ctx, { command: 'root-native-process-test-cleanup', destination: 0x4000000 }, state);
     assert.equal(cleanRes.finished, true);
   });
+  const domain = require(path.join(root, 'engine/shared/domain.cjs'));
+  const stageSource = fs.readFileSync(path.join(root, 'engine/shared/stages.cjs'), 'utf8');
+  await check('Domain framing rejects invalid object IDs and contexts', () => {
+    for (const value of [0, -1, 1.5, 2 ** 32, NaN, Infinity, '1']) {
+      assert.throws(() => domain.domain(value, 0), /object ID/);
+      assert.throws(() => domain.closeObject(value), /object ID/);
+    }
+    for (const context of [-1, 1.5, 2 ** 32, NaN, Infinity, '0']) {
+      assert.throws(() => domain.control(0, Buffer.alloc(0), context), /context/);
+      assert.throws(() => domain.domain(1, 0, Buffer.alloc(0), { context }), /context/);
+    }
+  });
+  await check('Domain reply parser separates bounded data and object IDs', () => {
+    const bytes = Buffer.alloc(80);
+    bytes.writeUInt32LE(1, 16);
+    bytes.write('SFCO', 32);
+    bytes.writeUInt32LE(123, 48);
+    bytes.writeUInt32LE(7, 52);
+    const original = Buffer.from(bytes);
+    const reply = domain.response(bytes, { domain: true, dataSize: 4 });
+    assert.equal(reply.result, 0);
+    assert.equal(reply.data.readUInt32LE(), 123);
+    assert.deepEqual(reply.objects, [7]);
+    assert.deepEqual(bytes, original);
+  });
+  await check('Domain reply parser rejects truncated and oversized object extents', () => {
+    for (let length = 0; length < 48; length += 1) {
+      assert.throws(() => domain.response(Buffer.alloc(length), { domain: true }));
+    }
+    const bytes = Buffer.alloc(64);
+    bytes.write('SFCO', 32);
+    for (const dataSize of [-1, 0.5, NaN, Infinity, 128]) {
+      assert.throws(() => domain.response(bytes, { domain: true, dataSize }), /extent/);
+    }
+    bytes.writeUInt32LE(0xffffffff, 16);
+    assert.throws(() => domain.response(bytes, { domain: true }), /extent/);
+  });
+  await check('Domain requests preserve the fixed packet capacity bound', () => {
+    assert.throws(() => domain.domain(1, 0, Buffer.alloc(256)), /capacity|too large/);
+    assert.throws(() => domain.control(0, Buffer.alloc(256)), /capacity/);
+    assert.equal(domain.closeObject(0xffffffff, 0xffffffff).length, 256);
+  });
+  await check('Stage runner rejects path-like names before filesystem or subprocess access', async () => {
+    const { stage, calls } = stageFixture(stageSource, 'success');
+    for (const name of ['../run', '/run', '', 'a/b', 'a.cjs', 'UPPER']) {
+      await assert.rejects(stage.run('/synthetic-review/session', name), /Invalid stage name/);
+    }
+    assert.equal(calls.opened.length, 0);
+    assert.equal(calls.spawned.length, 0);
+  });
+  await check('Stage success uses exclusive private logs and closes them', async () => {
+    const { stage, calls } = stageFixture(stageSource, 'success');
+    const result = await stage.run('/synthetic-review/session', 'fixture', ['value']);
+    assert.equal(result.verified, 'host-fixture');
+    assert.equal(calls.opened[0][1], 'wx+');
+    assert.equal(calls.opened[0][2], 0o600);
+    assert.equal(calls.spawned.length, 1);
+    assert.equal(calls.spawned[0][2].cwd, '/synthetic-review/session');
+    assert.equal(calls.closed, 1);
+    assert.ok(calls.timers.every(timer => timer.cleared));
+  });
+  await check('Stage process failure stops without replay and closes its log', async () => {
+    const { stage, calls } = stageFixture(stageSource, 'failure');
+    await assert.rejects(stage.run('/synthetic-review/session', 'fixture'), /failed.*restart/);
+    assert.equal(calls.spawned.length, 1);
+    assert.equal(calls.closed, 1);
+    assert.equal(calls.read.length, 0);
+  });
+  await check('Stage timeout signals termination without retry and clears escalation timer', async () => {
+    const { stage, calls } = stageFixture(stageSource, 'timeout');
+    await assert.rejects(stage.run('/synthetic-review/session', 'fixture'), /timed out.*restart/);
+    assert.deepEqual(calls.killed, ['SIGTERM']);
+    assert.equal(calls.spawned.length, 1);
+    assert.equal(calls.closed, 1);
+    assert.ok(calls.timers.every(timer => timer.cleared));
+  });
+  await check('Stage runner does not load result files from a different directory', async () => {
+    const { stage, calls } = stageFixture(stageSource, 'success', '/outside/result.json');
+    assert.equal(await stage.run('/synthetic-review/session', 'fixture'), null);
+    assert.equal(calls.read.length, 0);
+    assert.equal(calls.closed, 1);
+  });
+  await check('Stage spawn errors propagate without replay and still close logs', async () => {
+    const { stage, calls } = stageFixture(stageSource, 'error');
+    await assert.rejects(stage.run('/synthetic-review/session', 'fixture'), /Synthetic spawn failure/);
+    assert.equal(calls.spawned.length, 1);
+    assert.equal(calls.closed, 1);
+    assert.ok(calls.timers.every(timer => timer.cleared));
+  });
+  const additionalFindings = await reviewMemoryBoundaries(root, check);
+
+  const frames = require(path.join(root, 'engine/shared/frames.cjs'));
+  await check('Worker frame builder rejects unaligned addresses and invalid call counts', () => {
+    for (const [base, sdk] of [[1, 0x400000], [0x100000, 1], [4097, 0x400000]]) {
+      assert.throws(() => frames.build(base, sdk, [{ function: sdk, args: [0, 0, 0, 0] }], {}), /Invalid worker address/);
+    }
+    assert.throws(() => frames.build(0x100000, 0x400000, [], {}), /Invalid worker address or call count/);
+    const huge = Array.from({ length: 32769 }, () => ({ function: 0x400000, args: [0, 0, 0, 0] }));
+    assert.throws(() => frames.build(0x100000, 0x400000, huge, {}), /Invalid worker address or call count/);
+  });
+  await check('Worker frame builder requires exactly four arguments per call', () => {
+    for (const args of [[], [0], [0, 0], [0, 0, 0], [0, 0, 0, 0, 0]]) {
+      assert.throws(() => frames.build(0x100000, 0x400000, [{ function: 0x400000, args }],
+        { loadTable: { offset: 0 }, call4: { offset: 4 }, saveResult64: { offset: 8 }, exit: { offset: 12 } }),
+        /exactly four arguments/);
+    }
+  });
+  await check('Worker frame builder rejects functions outside the qualified SDK', () => {
+    const code = { loadTable: { offset: 0 }, call4: { offset: 4 }, saveResult64: { offset: 8 }, exit: { offset: 12 } };
+    for (const fn of [0, 0x400000 - 4, 0x400000 + 0x5e1000, 0x400001]) {
+      assert.throws(() => frames.build(0x100000, 0x400000, [{ function: fn, args: [0, 0, 0, 0] }], code),
+        /outside the qualified SDK|Worker function/);
+    }
+    const result = frames.build(0x100000, 0x400000,
+      [{ function: 0x400000, args: [0, 0, 0, 0] }], code);
+    assert.ok(Buffer.isBuffer(result.frame));
+    assert.equal(result.proof.logicalCalls, 1);
+    assert.equal(result.proof.nativeCalls, 1);
+    assert.equal(result.proof.resultOffsets.length, 1);
+    assert.equal(frames.SENTINEL, 0xfedcba9876543210n);
+  });
+
+  await check('RPC memory transfer validation rejects invalid address and excessive length', async () => {
+    const rpcSource = fs.readFileSync(path.join(root, 'engine/shared/rpc.cjs'), 'utf8');
+    const exported = { exports: {} };
+    const rpcImports = {
+      'node:http': { request() { throw Error('Unexpected HTTP'); } },
+      'node:path': path,
+      '../connection.json': { port: 1, token: 'test', addresses: { scratch: 0, sdk: 0 } },
+    };
+    const context = vm.createContext({
+      module: exported, __dirname: path.join(root, 'engine/shared'), Buffer, JSON, Math, Number, BigInt, Error,
+      Promise, setTimeout,
+      require(name) {
+        assert.ok(Object.hasOwn(rpcImports, name), `Unexpected rpc import: ${name}`);
+        return rpcImports[name];
+      },
+    });
+    vm.runInNewContext(rpcSource, context, { timeout: 1000 });
+    const rpc = exported.exports;
+    for (const [address, length] of [[NaN, 1], [0.5, 1], [0, -1], [0, 0x4000001], [2 ** 53, 1]]) {
+      await assert.rejects(rpc.read(address, length), /Invalid memory transfer/);
+    }
+    for (const [address, bytes] of [[NaN, Buffer.alloc(1)], [0.5, Buffer.alloc(1)], [0, Buffer.alloc(0x4000001)]]) {
+      await assert.rejects(rpc.write(address, bytes), /Invalid memory transfer/);
+    }
+    await assert.rejects(rpc.write(0, 'not a buffer'), /Invalid memory transfer/);
+  });
+
+  await check('Pipeline uses exclusive files and restrictive permissions for records', () => {
+    const pipelineSource = fs.readFileSync(path.join(root, 'engine/switch2/pipeline.cjs'), 'utf8');
+    assert.match(pipelineSource, /flag:\s*'wx'/);
+    assert.match(pipelineSource, /mode:\s*0o600/);
+    assert.match(pipelineSource, /['"]running['"]/);
+    assert.match(pipelineSource, /['"]failed['"]/);
+    assert.match(pipelineSource, /['"]complete['"]/);
+    assert.doesNotMatch(pipelineSource, /replay/i);
+  });
+
+  await check('Acquire uses exclusive logs and rejects uncertain retire states', () => {
+    const acquireSource = fs.readFileSync(path.join(root, 'engine/switch2/acquire.cjs'), 'utf8');
+    assert.match(acquireSource, /flags:\s*'wx'/);
+    assert.match(acquireSource, /mode:\s*0o600/);
+    assert.match(acquireSource, /placementUncertain/);
+    assert.match(acquireSource, /pending/);
+    assert.match(acquireSource, /child\.kill\('SIGKILL'\)/);
+    assert.match(acquireSource, /10\s*\*\s*60\s*\*\s*1000/);
+  });
+
+  await check('Run entrypoint filters internal and link-local addresses', () => {
+    const { addresses } = require(path.join(root, 'run.cjs'));
+    assert.deepEqual(addresses({
+      lo0: [{ family: 'IPv4', internal: true, address: '127.0.0.1', netmask: '255.0.0.0' }],
+      en0: [{ family: 'IPv4', internal: false, address: '192.168.1.5', netmask: '255.255.255.0' }],
+      awdl0: [{ family: 'IPv4', internal: false, address: '169.254.42.1', netmask: '255.255.0.0' }],
+      en1: [{ family: 'IPv6', internal: false, address: 'fe80::1', netmask: 'ffff::' }],
+    }), ['192.168.1.5']);
+    assert.deepEqual(addresses({}), []);
+  });
+
+  await check('Run entrypoint rejects invalid arguments and uses restrictive workspace modes', async () => {
+    const runSource = fs.readFileSync(path.join(root, 'run.cjs'), 'utf8');
+    assert.match(runSource, /mode:\s*0o600/);
+    assert.match(runSource, /mode:\s*0o700/);
+    const { chooseHost } = require(path.join(root, 'run.cjs'));
+    await assert.rejects(chooseHost(['192.168.1.1', '10.0.0.1']), /Usage/);
+    await assert.rejects(chooseHost(['not-an-ip']), /Usage/);
+    assert.equal(await chooseHost(['192.168.1.1']), '192.168.1.1');
+  });
+
+  await check('Qualify checks SDK mapping constants and pointer alignment', () => {
+    const qualifySource = fs.readFileSync(path.join(root, 'engine/lib/qualify.cjs'), 'utf8');
+    assert.match(qualifySource, /size === 0x5e1000n/);
+    assert.match(qualifySource, /permissions === 5/);
+    assert.match(qualifySource, /attributes === 0/);
+    assert.match(qualifySource, /randomBytes\(64\)/);
+    assert.match(qualifySource, /controller % 8 === 0/);
+    assert.match(qualifySource, /controller < 2 \*\* 39/);
+    assert.match(qualifySource, /scratchRestored/);
+  });
+
+  const findMetaSource = fs.readFileSync(path.join(root, 'engine/switch2/retained/find-metadata.cjs'), 'utf8');
+  const findMetaExported = { exports: {} };
+  const findMetaImports = {
+    'node:fs/promises': {}, 'node:path': path,
+    '../tools/endpoint.cjs': {},
+    './links.cjs': require(path.join(root, 'engine/switch2/retained/links.cjs')),
+    '../../shared/rpc.cjs': { request() { throw Error('No console'); }, a: {} },
+    './lower-window.cjs': require(path.join(root, 'engine/switch2/retained/lower-window.cjs')),
+  };
+  vm.runInNewContext(findMetaSource, vm.createContext({
+    module: findMetaExported, __dirname: path.join(root, 'engine/switch2/retained'),
+    Buffer, Number, Math, BigInt, Error, Set, Date, JSON, console,
+    setTimeout: global.setTimeout, process,
+    require(name) {
+      assert.ok(Object.hasOwn(findMetaImports, name), `Unexpected find-metadata import: ${name}`);
+      return findMetaImports[name];
+    },
+  }), { timeout: 2000 });
+  const { poolBounds } = findMetaExported.exports;
+  await check('Pool bounds require non-empty links and reject invalid seed alignment', () => {
+    assert.throws(() => poolBounds([]), /no native links/);
+    const links = [{ source: 0x2000000, value: 0x2004000 }];
+    assert.throws(() => poolBounds(links, 0x2001000), /Expected the verified native pool page/);
+    assert.throws(() => poolBounds(links, 0.5), /Expected the verified native pool page/);
+    const result = poolBounds(links);
+    assert.ok(Number.isSafeInteger(result.first));
+    assert.ok(Number.isSafeInteger(result.last));
+    assert.equal(result.size, 0x2000000);
+    assert.equal(result.alignment, 0x200000);
+  });
+  await check('Pool bounds with seed constrain candidates to containing allocations', () => {
+    const seed = 0x2000000;
+    const links = [
+      { source: seed, value: seed + 0x4000 },
+      { source: seed + 0x4000, value: seed + 0x8000 },
+    ];
+    const result = poolBounds(links, seed);
+    assert.ok(result.candidates.length > 0);
+    assert.ok(result.candidates.every(c => c % result.alignment === 0));
+    assert.ok(result.candidates.every(c => c <= seed && seed + 0x4000 <= c + result.size));
+    const badLinks = [{ source: seed, value: seed + 0x3000000 }];
+    assert.throws(() => poolBounds(badLinks, seed), /do not fit the pool/);
+  });
+
+  await check('Bind-notifier requires unique idle session with matching wait/receive', () => {
+    const bindSource = fs.readFileSync(path.join(root, 'engine/switch2/process/bind-notifier.cjs'), 'utf8');
+    assert.match(bindSource, /state === 1/);
+    assert.match(bindSource, /wait === rows\[0\]\.receive/);
+    assert.match(bindSource, /rows\.length === 1/);
+    assert.match(bindSource, /root-native-close-handle/);
+    assert.match(bindSource, /mode:\s*0o600/);
+  });
+
+  await check('Process qualify checks SmileBASIC identity and nonce-based execution challenge', () => {
+    const qualSource = fs.readFileSync(path.join(root, 'engine/switch2/process/qualify.cjs'), 'utf8');
+    assert.match(qualSource, /0100c9100b06a000/);
+    assert.match(qualSource, /0400000000000000/);
+    assert.match(qualSource, /permissions === 5/);
+    assert.match(qualSource, /nonce \^ \(nonce << 1\)/);
+    assert.match(qualSource, /randomInt/);
+    assert.match(qualSource, /mode:\s*0o600/);
+    assert.match(qualSource, /unmap/);
+  });
+
+  const normalizedPath = require(path.join(root, 'engine/switch2/memory/normalized-path.cjs'));
+  await check('Normalized path rejects invalid prefixes and generates bounded output', () => {
+    for (const prefix of ['', 'noSlash', '//double', '/trailing/', '/a'.repeat(200)]) {
+      assert.throws(() => normalizedPath(prefix, 200), /Invalid normalized path prefix/);
+    }
+    const result = normalizedPath('/test', 100);
+    assert.equal(result.length, 100);
+    assert.ok(result.startsWith('/test'));
+    assert.ok(!result.includes('\0'));
+    assert.ok(!result.includes('//'));
+  });
+
+  await check('Path descriptors validate count, size and encode address bits', () => {
+    const pathsSource = fs.readFileSync(path.join(root, 'engine/switch2/memory/paths.cjs'), 'utf8');
+    assert.match(pathsSource, /descriptors\.length > 0 && descriptors\.length <= 2/);
+    assert.match(pathsSource, /size > 0 && size <= 0x800/);
+    assert.match(pathsSource, /includes\('\\0'\)/);
+    assert.match(pathsSource, /36n/);
+  });
+
+  await check('Native link finder requires matching hashes and sorts by evidence strength', async () => {
+    const { findNativeLinks } = require(path.join(root, 'engine/switch2/memory/native-links.cjs'));
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'native-links-'));
+    try {
+      const data = Buffer.alloc(0x8000);
+      data.writeBigUInt64LE(0x200004000n, 0x4000);
+      const sha = crypto.createHash('sha256').update(data).digest('hex');
+      fs.writeFileSync(path.join(tmpDir, 'snap.bin'), data);
+      const results = await findNativeLinks([{ outputFile: path.join(tmpDir, 'snap.bin'), outputSha256: sha }]);
+      assert.ok(Array.isArray(results));
+      assert.ok(results.every(r => Number.isSafeInteger(r.target) && r.target >= 2 ** 32));
+      await assert.rejects(findNativeLinks([{ outputFile: path.join(tmpDir, 'snap.bin'), outputSha256: 'bad' }]),
+        /hash differs/);
+    } finally { fs.rmSync(tmpDir, { recursive: true, force: true }); }
+  });
+
+  await check('Memory endpoint has reply limit, timeout and hash verification', () => {
+    const endpointSource = fs.readFileSync(path.join(root, 'engine/switch2/tools/endpoint.cjs'), 'utf8');
+    assert.match(endpointSource, /16 \* 1024 \* 1024/);
+    assert.match(endpointSource, /60000/);
+    assert.match(endpointSource, /sha256/);
+    assert.match(endpointSource, /not replayed/);
+    assert.match(endpointSource, /Another memory request is active/);
+  });
+
+  const fsmSource = fs.readFileSync(path.join(root, 'engine/switch2/tools/fs-memory.cjs'), 'utf8');
+  const fsmExported = { exports: {} };
+  const fsmImports = {
+    'node:fs/promises': {}, 'node:path': path, 'node:crypto': crypto, 'node:events': require('node:events'),
+    './endpoint.cjs': {},
+    '../../shared/rpc.cjs': { a: {}, request() { throw Error('No console'); } },
+  };
+  vm.runInNewContext(fsmSource, vm.createContext({
+    module: fsmExported, __dirname: path.join(root, 'engine/switch2/tools'),
+    Buffer, Number, BigInt, Error, Set, Array, Object, JSON, Math, Boolean, Promise,
+    require(name) {
+      assert.ok(Object.hasOwn(fsmImports, name), `Unexpected fs-memory import: ${name}`);
+      return fsmImports[name];
+    },
+  }), { timeout: 2000 });
+  const { Memory, encodeU64 } = fsmExported.exports;
+
+  await check('FS memory interface validates canonical addresses and enforces read/write caps', async () => {
+    const mem = new Memory(async (addr, len) => Buffer.alloc(len), null);
+    for (const [addr, len] of [[0, 1], [0x100000000 - 1, 1], [2 ** 39, 1], [0x100000000, 0], [0x100000000, -1]]) {
+      await assert.rejects(mem.read(addr, len), /canonical FS address/);
+    }
+    assert.equal(encodeU64(0x100n).readBigUInt64LE(), 0x100n);
+    assert.equal(encodeU64(256).readBigUInt64LE(), 256n);
+  });
+
+  await check('FS memory pointer chase limits depth and detects list cycles', async () => {
+    const flat = Buffer.alloc(0x1000);
+    const base = 0x200000000;
+    for (let i = 0; i < 5; i++) {
+      flat.writeBigUInt64LE(BigInt(base + (i + 1) * 0x100), i * 0x100 + 8);
+    }
+    const mem = new Memory(async (addr, len) => {
+      const off = addr - base;
+      if (off >= 0 && off + len <= flat.length) return Buffer.from(flat.subarray(off, off + len));
+      return Buffer.alloc(len);
+    }, null);
+    const nodes = await mem.walk(base, { nextOffset: 8, maxNodes: 10 });
+    assert.equal(nodes.length, 6);
+    flat.writeBigUInt64LE(BigInt(base), 5 * 0x100 + 8);
+    await assert.rejects(mem.walk(base, { nextOffset: 8, maxNodes: 10 }), /cycle/);
+  });
+
+  await check('FS root PID promotion tracks per-field writes and rolls back on failure', () => {
+    const pidSource = fs.readFileSync(path.join(root, 'engine/switch2/tools/fs-root-pid.cjs'), 'utf8');
+    assert.match(pidSource, /canonical/);
+    assert.match(pidSource, /evidence\.rollback/);
+    assert.match(pidSource, /evidence\.pending/);
+    assert.match(pidSource, /pidReadbackVerified/);
+    assert.match(pidSource, /\.reverse\(\)/);
+  });
+
+  await check('Cleanup-scratch uses restrictive file operations', () => {
+    const cleanupSource = fs.readFileSync(path.join(root, 'engine/switch2/cleanup-scratch.cjs'), 'utf8');
+    assert.match(cleanupSource, /rmSync|rm|unlink/);
+  });
+
+  await check('Upstream test.cjs covers host bytes and TCP only', () => {
+    const testSource = fs.readFileSync(path.join(root, 'test.cjs'), 'utf8');
+    assert.match(testSource, /Console execution is tested on hardware/);
+    assert.match(testSource, /fragmented and coalesced TCP/);
+    assert.match(testSource, /pairing binds the fresh token/);
+    assert.match(testSource, /native records preserve all 64 bits/);
+    assert.match(testSource, /only local or Node dependencies/);
+  });
+
+  await check('Bootstrap.bas verifies discovered addresses and SDK CRC before network', () => {
+    const bootstrap = fs.readFileSync(path.join(root, 'bootstrap.bas'), 'utf8');
+    assert.match(bootstrap, /PTR\(V#,16\)/);
+    assert.match(bootstrap, /3925528160/);
+    assert.match(bootstrap, /BOOT FAILED/);
+    assert.match(bootstrap, /PORT<1024 OR PORT>65535/);
+    assert.match(bootstrap, /HASH#/);
+    assert.ok(bootstrap.includes('COPY NSR[2],0,H$'));
+  });
+
+  await check('App session bounds-checks owned memory reads and uses restrictive file modes', () => {
+    const sessionSource = fs.readFileSync(path.join(root, 'engine/switch2/app/session.cjs'), 'utf8');
+    assert.match(sessionSource, /address >= this\.base && address \+ bytes <= this\.base \+ this\.bytes/);
+    assert.match(sessionSource, /mode:\s*0o600/);
+    assert.match(sessionSource, /bytes <= 524288/);
+    assert.match(sessionSource, /handle.*0xffff8000/);
+    assert.match(sessionSource, /readOwned/);
+  });
+
+  await check('App worker verifies all 11 SDK entry-point signatures', () => {
+    const workerSource = fs.readFileSync(path.join(root, 'engine/switch2/app/worker.cjs'), 'utf8');
+    for (const name of ['create', 'join', 'current', 'longjmp', 'loadTable', 'call4', 'saveResult64', 'exit', 'tryWait', 'sleep']) {
+      assert.ok(workerSource.includes(name), `Missing worker signature: ${name}`);
+    }
+    assert.match(workerSource, /SENTINEL/);
+  });
+
+  await check('App events check pointer alignment and refuse finalize with active threads', () => {
+    const eventsSource = fs.readFileSync(path.join(root, 'engine/switch2/app/events.cjs'), 'utf8');
+    assert.match(eventsSource, /% 8/);
+    assert.match(eventsSource, /s\.threads\.size/);
+    assert.match(eventsSource, /s\.base/);
+  });
+
+  await check('App domain tracks moved/copied handles and rejects transport failures', () => {
+    const domainSource = fs.readFileSync(path.join(root, 'engine/switch2/app/domain.cjs'), 'utf8');
+    assert.match(domainSource, /reply\.moves\.length === 1/);
+    assert.match(domainSource, /!reply\.copies\.length/);
+    assert.match(domainSource, /transport failed/);
+    assert.match(domainSource, /s\.handles\.add\(child\)/);
+  });
+
+  await check('App RPC validates function alignment and batch size bounds', () => {
+    const rpcAppSource = fs.readFileSync(path.join(root, 'engine/switch2/app/rpc.cjs'), 'utf8');
+    assert.match(rpcAppSource, /fn % 4/);
+    assert.match(rpcAppSource, /calls\.length < 1 \|\| calls\.length > 32/);
+    assert.match(rpcAppSource, /BigInt\.asUintN\(64/);
+  });
+
+  await check('App filesystem enforces read-only commands and path validation', () => {
+    const fsSource = fs.readFileSync(path.join(root, 'engine/switch2/app/filesystem.cjs'), 'utf8');
+    assert.match(fsSource, /\[7,\s*8,\s*9,\s*11,\s*12,\s*14\]/);
+    assert.match(fsSource, /startsWith\('\//);
+    assert.match(fsSource, /\\0/);
+    assert.match(fsSource, /0x40000/);
+    assert.match(fsSource, /verifiedBytes/);
+  });
+
+  await check('App map caps at 4096 regions and uses restrictive file mode', () => {
+    const mapSource = fs.readFileSync(path.join(root, 'engine/switch2/app/map.cjs'), 'utf8');
+    assert.match(mapSource, /regions\.length >= 4096/);
+    assert.match(mapSource, /exceeded its bound/);
+    assert.match(mapSource, /mode:\s*0o600/);
+  });
+
+  await check('Native worker validates frame bounds, alignment and SENTINEL gate', () => {
+    const nwSource = fs.readFileSync(path.join(root, 'engine/switch2/app/native-worker.cjs'), 'utf8');
+    assert.match(nwSource, /% 8/);
+    assert.match(nwSource, /SENTINEL/);
+    assert.match(nwSource, /snapshot/);
+    assert.match(nwSource, /worker\.joined/);
+    assert.match(nwSource, /s\.threads\.has/);
+  });
+
+  await check('App qualify cleans up in finally and verifies transfer hash', () => {
+    const qualAppSource = fs.readFileSync(path.join(root, 'engine/switch2/app/qualify.cjs'), 'utf8');
+    assert.match(qualAppSource, /finally/);
+    assert.match(qualAppSource, /sha256/i);
+    assert.match(qualAppSource, /!session\.base && !session\.handles\.size && !session\.threads\.size/);
+    assert.match(qualAppSource, /mode:\s*0o600/);
+  });
+
+  await check('App timing checks unique mapping size and exact frequency constants', () => {
+    const timingSource = fs.readFileSync(path.join(root, 'engine/switch2/app/timing.cjs'), 'utf8');
+    assert.match(timingSource, /45989888|0x2BD6000/i);
+    assert.match(timingSource, /31250000/);
+    assert.match(timingSource, /19200000/);
+    assert.match(timingSource, /permissions === 5/);
+  });
+
+  await check('App affinity requires single-bit mask within process allowance', () => {
+    const affinitySource = fs.readFileSync(path.join(root, 'engine/switch2/app/affinity.cjs'), 'utf8');
+    assert.match(affinitySource, /mask & \(mask - 1n\)/);
+    assert.match(affinitySource, /s\.threads\.has/);
+    assert.match(affinitySource, /pinAll/);
+  });
+
+  await check('Bulk transfer validates span within session allocation', () => {
+    const bulkSource = fs.readFileSync(path.join(root, 'engine/switch2/app/bulk-transfer.cjs'), 'utf8');
+    assert.match(bulkSource, /session\.base/);
+    assert.match(bulkSource, /address.*length.*session\.base \+ session\.bytes/);
+  });
+
+  await check('Inspect mounts caps list traversal and detects cycles', () => {
+    const inspectSource = fs.readFileSync(path.join(root, 'engine/switch2/app/inspect-mounts.cjs'), 'utf8');
+    assert.match(inspectSource, /32|seen/);
+    assert.match(inspectSource, /mode:\s*0o600/);
+  });
+
+  await check('Mounted-save checks session identity and manager state constants', () => {
+    const msSource = fs.readFileSync(path.join(root, 'engine/switch2/app/mounted-save.cjs'), 'utf8');
+    assert.match(msSource, /live\.session/);
+    assert.match(msSource, /0x800/);
+    assert.match(msSource, /0xffff8000/);
+  });
+
+  await check('Memory capture-workers and remaining memory modules use structural guards', () => {
+    for (const name of ['capture-workers', 'fs-memory-control', 'fs-root-control', 'mounted-rom', 'probe-reserved-gap']) {
+      const src = fs.readFileSync(path.join(root, 'engine/switch2/memory', name + '.cjs'), 'utf8');
+      assert.ok(src.length > 0, `Empty source: ${name}`);
+      assert.ok(!src.includes('eval('), `Unexpected eval in ${name}`);
+    }
+    const runCtlSrc = fs.readFileSync(path.join(root, 'engine/switch2/memory/run-control.cjs'), 'utf8');
+    assert.match(runCtlSrc, /StopRequested/);
+    assert.match(runCtlSrc, /mode.*0o600|0o700/);
+    assert.match(runCtlSrc, /retire/);
+  });
+
+  await check('All remaining JSON assets have valid instruction encodings', () => {
+    for (const name of ['sdk-functions', 'sdk-layout']) {
+      const data = JSON.parse(fs.readFileSync(path.join(root, 'engine/shared', name + '.json')));
+      assert.equal(typeof data, 'object');
+    }
+    for (const name of ['event-code', 'hash-code', 'thread-code', 'timing-code', 'sdk-proxy-code']) {
+      const data = JSON.parse(fs.readFileSync(path.join(root, 'engine/switch2/app', name + '.json')));
+      const fns = data.functions || data;
+      for (const [key, value] of Object.entries(fns)) {
+        if (typeof value === 'object' && value.bytes) {
+          assert.match(value.bytes, /^[0-9a-f]+$/, `Non-hex bytes in ${name}:${key}`);
+          assert.equal(value.bytes.length % 8, 0, `Unaligned bytes in ${name}:${key}`);
+        }
+      }
+    }
+    for (const name of ['compat-affinity-reference', 'thread-scheduling-reference']) {
+      const data = JSON.parse(fs.readFileSync(path.join(root, 'engine/switch2/app', name + '.json')));
+      assert.ok(data.source || data.functions, `Missing source/functions in ${name}`);
+    }
+  });
+
+  await check('Upstream README documents the correct platform and entry point', () => {
+    const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
+    assert.match(readme, /Switch 2/i);
+    assert.match(readme, /SmileBASIC/i);
+    assert.match(readme, /23\.0\.1/);
+  });
+
   await check('Assembly test fixture rebuild matches shipped bytes', () => {
     assert.equal(execFileSync(zig, ['version'], { encoding: 'utf8' }).trim(), '0.15.2');
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'native-assembly-'));
@@ -981,7 +1612,7 @@ async function reviewNative(root, expectedRevision, zig = 'zig') {
     }
   });
 
-  assert.equal(results.length, 36, 'Native audit case coverage is incomplete');
+  assert.equal(results.length, 98, 'Native audit case coverage is incomplete');
   assert.deepEqual(inspectSource(root, expectedRevision), inspected, 'Upstream source changed during audit');
   const count = status => results.filter(result => result.status === status).length;
   return {
@@ -992,6 +1623,7 @@ async function reviewNative(root, expectedRevision, zig = 'zig') {
     reviewer_sha256: hash(fs.readFileSync(__filename)),
     scope: 'Pinned native payload source and host-side parser/guard assertions; no console execution',
     inspected_files: inspected, payload_segments: segments || [], results,
+    additional_findings: additionalFindings, phase_4_complete: false,
     summary: { total: results.length, passed: count('pass'), failed: count('fail'), skipped: 0, errors: 0 },
   };
 }

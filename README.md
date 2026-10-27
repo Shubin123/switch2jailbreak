@@ -97,8 +97,17 @@ and a full security review remain pending.
 Follow-up evidence: [verification review](docs/security-review.md) and
 [reproducible workspace release protocol](docs/release.md). Desktop Chromium,
 Firefox and WebKit controls now pass in Linux CI; this is not console validation.
-The [core native review](docs/native-review.md) adds 36 host-only audit checks
-and source-level findings without claiming the remaining chain has been audited.
+The [core native review](docs/native-review.md) adds 98 host-only audit checks
+across all 95 tracked upstream files (9,128 lines) with 15 documented findings
+(NR-01 through NR-15). File-level walkthrough coverage is complete; this is not
+a claim of path-level or branch-level coverage of every conditional.
+
+The [native coverage inventory](docs/native-coverage.md) accounts for every
+pinned upstream file and prioritizes the remaining review slices, with separate
+browser-entry evidence gates. Generate it without executing upstream code:
+`node scripts/native-coverage.cjs /path/to/ns2jb results/native-coverage.json`.
+Separate structural checks cover all 11 pinned engine JSON assets; their
+captured SDK provenance and instruction semantics remain unverified.
 
 - [x] **Phase 1** — Baseline report and claims inventory (`docs/baseline.md`)
 - [x] **Phase 2** — Upstream and build verification (`docs/build-status.md`)
@@ -134,6 +143,9 @@ The user-proposed browser path is documented separately in
 `site/browser-entry.html`: assume SwitchBru / BrowseDNS provides page navigation,
 without SmileBASIC. This remains an untested access assumption, not a browser
 exploit or native payload loader. No verified browser execution chain is available.
+The [entry evidence flow](docs/browser-entry.md) provides a manual form and local
+JSON export, with optional API-presence checks. It does not run payloads, the
+resource-heavy compatibility harness, or upload telemetry.
 
 `site/hardware-testing.html` provides a complete pinned upstream download and
 manual preflight notes, not a browser exploit or automatic console launcher.

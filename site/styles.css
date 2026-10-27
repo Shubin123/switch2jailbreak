@@ -2,6 +2,11 @@
 * { box-sizing: border-box; }
 code { overflow-wrap: anywhere; }
 body { margin: 0; }
+input:not([type="checkbox"]), textarea, select { width: 100%; max-width: 760px; padding: 10px; background: #111b23; color: #e6edf3; border: 1px solid #617989; border-radius: 4px; font: inherit; }
+textarea { resize: vertical; }
+button { padding: 10px 16px; background: #91ded0; color: #0b1116; border: 0; border-radius: 4px; font: inherit; cursor: pointer; }
+button:disabled { opacity: .5; cursor: default; }
+input:focus-visible, textarea:focus-visible, select:focus-visible, button:focus-visible { outline: 3px solid #f4c477; outline-offset: 3px; }
 .wrap { width: min(1120px, 90%); margin-inline: auto; }
 a { color: #91ded0; text-underline-offset: 5px; }
 a:hover { color: #fff; }

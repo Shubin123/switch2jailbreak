@@ -14,6 +14,20 @@ async function startServer() {
   const requests = [];
   const server = http.createServer((request, response) => {
     requests.push(request.url);
+    const entryFiles = new Map([
+      ['/entry/browser-entry.html', ['browser-entry.html', 'text/html']],
+      ['/entry/browser-entry.js', ['browser-entry.js', 'text/javascript']],
+      ['/entry/styles.css', ['styles.css', 'text/css']],
+    ]);
+    const entryPath = request.url.split('?')[0];
+    if (entryFiles.has(entryPath)) {
+      const [filename, contentType] = entryFiles.get(entryPath);
+      response.setHeader('Content-Type', `${contentType}; charset=utf-8`);
+      response.setHeader('Cache-Control', 'no-store');
+      response.setHeader('X-Content-Type-Options', 'nosniff');
+      response.end(fs.readFileSync(path.join(__dirname, '../../site', filename)));
+      return;
+    }
     const match = /^\/(normal|isolated)\/(.*)$/.exec(request.url);
     if (!match || !files.has(match[2])) {
       response.writeHead(404).end('Not found');

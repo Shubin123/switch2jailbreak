@@ -10,9 +10,10 @@ proof of console compatibility, or independent hardware reproduction.
 
 ## Coverage and source identity
 
-The walkthrough covered these 36 complete text files (3,244 lines including
-comments and manifest data). The audit report records each file's SHA256 and
-line count. These identify the reviewed sources, not the correctness of them.
+The walkthrough covered all 95 tracked upstream files (9,128 lines
+including comments, manifest data, documentation and binary assets). The
+audit report records each file's SHA256 and line count. These identify the
+reviewed sources, not the correctness of them.
 
 | Upstream path | Review focus |
 | --- | --- |
@@ -37,6 +38,8 @@ line count. These identify the reviewed sources, not the correctness of them.
 | `engine/switch2/ro/bind-sessions.cjs` | Heap/session bounds, unique server bindings, domain ID bounds and adapter-type matching |
 | `engine/switch2/ro/copy-loader-root.cjs` | Manager/owner identity, reference-count challenges, temporary slot substitution and readback evidence |
 | `engine/shared/ipc.cjs` | Descriptor widths, packet capacity, reply framing and malformed input |
+| `engine/shared/domain.cjs` | Domain object/context bounds, fixed packet capacity, reply data/object extents and truncation rejection |
+| `engine/shared/stages.cjs` | Exclusive private logs, stage-name validation, subprocess failure/timeout handling, no automatic replay and result-file directory restriction |
 | `engine/switch2/memory/session.cjs` | Initialization failure cleanup and deferred session/tool dependencies |
 | `engine/switch2/memory/cache-mount.cjs` | Borrowed mount ownership, live name/list guards, SDK failure recording and refresh ordering |
 | `engine/switch2/memory/cache-mount-sdk.json` | Declared offsets and instruction lengths, not independently authenticated SDK provenance |
@@ -52,6 +55,63 @@ line count. These identify the reviewed sources, not the correctness of them.
 | `engine/switch2/ro/test-gate.cjs` | Grouped session parking, single-step execution, and restoration execution in finally |
 | `engine/switch2/ro/test-sm.cjs` | Candidate SM handle qualification, service lookup error handling, and program identity query |
 | `engine/switch2/ro/install-retained.cjs` | Heap capture verification, cache array/owner matching, bootstrap probe retry and promotion |
+| `engine/switch2/memory/session-tools.cjs` | Page staging bounds, session batching, bulk upload rejection |
+| `engine/switch2/memory/verify-proof.cjs` | Saved-byte proof verification, stale/truncated/failed proof rejection |
+| `engine/switch2/memory/cache-address-plan.cjs` | NUL-write UTF-8 validation and byte-arithmetic bounds |
+| `engine/switch2/memory/signed-cache-plan.cjs` | Target/storage/period rejection and signed plan validation |
+| `engine/switch2/retained/lower-window.cjs` | Pointer alignment validation and window boundary checks |
+| `engine/switch2/retained/retained-memory.cjs` | Unresolved mutation blocking, promotion/stale/unready rejection, NR-15 short capture reproduction |
+| `engine/shared/frames.cjs` | Worker frame address alignment, argument count, SDK function bounds and region overflow |
+| `engine/shared/rpc.cjs` | Memory transfer address/length validation, chunking at 0x80000, 0x4000000 cap and truncation rejection |
+| `engine/switch2/pipeline.cjs` | Exclusive file writes, restrictive permissions, stage status recording and no-replay invariant |
+| `engine/switch2/acquire.cjs` | Exclusive log mode, 10-minute deadline, uncertain/pending/unjoined retire rejection, SIGKILL on abandon |
+| `run.cjs` | Internal/link-local address filtering, argument validation, restrictive workspace modes, source digest |
+| `engine/lib/qualify.cjs` | SDK mapping size/permissions/attributes, random challenge/restoration, pointer alignment and width |
+| `engine/switch2/retained/find-metadata.cjs` | Pool bounds calculation, seed alignment, candidate containment and link convergence cap |
+| `engine/switch2/process/bind-notifier.cjs` | Unique idle session requirement, wait/receive equality, copied handle closure |
+| `engine/switch2/process/qualify.cjs` | SmileBASIC/FS program identity, RX permission check, nonce-based execution challenge and unmapping |
+| `engine/switch2/memory/normalized-path.cjs` | Missing-path construction with prefix validation and bounded output |
+| `engine/switch2/memory/paths.cjs` | Path descriptor packet construction with count, size and address-bit encoding |
+| `engine/switch2/memory/native-links.cjs` | Address candidate extraction from saved native reads with hash matching and strength sorting |
+| `engine/switch2/tools/endpoint.cjs` | Memory endpoint reply limit, timeout and hash verification |
+| `engine/switch2/tools/fs-memory.cjs` | FS memory interface with canonical address validation, read/write caps, pointer chase depth and cycle detection |
+| `engine/switch2/tools/fs-root-pid.cjs` | FS root PID promotion with per-field write tracking and failure rollback |
+| `engine/switch2/cleanup-scratch.cjs` | Restrictive cleanup file operations with bounded scratch directory access |
+| `test.cjs` | Upstream host test suite covering bytes and TCP only |
+| `bootstrap.bas` | SmileBASIC entry script with address/CRC verification before network |
+| `SHA256SUMS` | Pinned file checksums for integrity verification |
+| `engine/switch2/process/test-function.bin` | Compiled test function binary (structural hash only) |
+| `engine/switch2/ro/payload/main` | Shipped native payload image (structural hash and segment verification) |
+| `engine/switch2/app/session.cjs` | App session lifecycle, cleanup ordering and deferred tool dependencies |
+| `engine/switch2/app/worker.cjs` | Worker group selection, thread management and cancellation coordination |
+| `engine/switch2/app/events.cjs` | Event signal/clear lifecycle with handle export and notification proofs |
+| `engine/switch2/app/domain.cjs` | Domain handle tracking, move/copy operations and transport failure rejection |
+| `engine/switch2/app/rpc.cjs` | App RPC function alignment validation and batch size bounds |
+| `engine/switch2/app/filesystem.cjs` | Read-only command enforcement and path validation |
+| `engine/switch2/app/map.cjs` | Region cap at 4,096 entries and non-advancing query rejection |
+| `engine/switch2/app/native-worker.cjs` | Worker frame bounds, alignment and SENTINEL gate validation |
+| `engine/switch2/app/qualify.cjs` | App qualification cleanup in finally and transfer hash verification |
+| `engine/switch2/app/timing.cjs` | Unique mapping size check and exact frequency constants |
+| `engine/switch2/app/affinity.cjs` | Single-bit mask within process allowance validation |
+| `engine/switch2/app/bulk-transfer.cjs` | Transfer span validation within session allocation bounds |
+| `engine/switch2/app/inspect-mounts.cjs` | Mount list traversal cap and cycle detection |
+| `engine/switch2/app/mounted-save.cjs` | Session identity and manager state constant verification |
+| `engine/switch2/memory/capture-workers.cjs` | Client-side progress preservation via readOwnedMany |
+| `engine/switch2/memory/fs-memory-control.cjs` | Bootstrap memory tooling with Unix socket, address selection, signed header, poison patterns and readback |
+| `engine/switch2/memory/fs-root-control.cjs` | Root IPC dispatch with BIS storage probing |
+| `engine/switch2/memory/mounted-rom.cjs` | RomFS storage tracing and domain object copying |
+| `engine/switch2/memory/probe-reserved-gap.cjs` | Reservation group qualification with worker orchestration, canary checking and cache probing |
+| `engine/switch2/memory/run-control.cjs` | Acquisition run tracking with checkpoint/stop/retire state machine and atomic report writes |
+| `engine/shared/sdk-functions.json` | SDK function declarations (structural encoding and alignment checks) |
+| `engine/shared/sdk-layout.json` | SDK layout constants (structural encoding checks) |
+| `engine/switch2/app/compat-affinity-reference.json` | Compatibility affinity reference data (structural checks) |
+| `engine/switch2/app/event-code.json` | Event code constants (structural instruction-byte checks) |
+| `engine/switch2/app/hash-code.json` | Hash code constants (structural instruction-byte checks) |
+| `engine/switch2/app/sdk-proxy-code.json` | SDK proxy code declarations (structural instruction-byte checks) |
+| `engine/switch2/app/thread-code.json` | Thread code constants (structural instruction-byte checks) |
+| `engine/switch2/app/thread-scheduling-reference.json` | Thread scheduling reference data (structural checks) |
+| `engine/switch2/app/timing-code.json` | Timing code constants (structural instruction-byte checks) |
+| `README.md` | Upstream documentation with platform, entry point and usage claims |
 
 The C payload's fixed output is 24 64-bit words. Its largest declared reply is
 184 bytes; with the response's 48-byte prefix this occupies 232 bytes of the
@@ -70,8 +130,11 @@ It neither calls a console nor
 executes the resulting native instructions. Transport methods are replaced by
 throwing stubs or deterministic in-memory responses for the interface checks.
 
-The report contains 36 separately accounted checks (the original 23, six
-cache/protocol checks, plus seven RO orchestration and cleanup checks):
+The report contains 98 separately accounted checks, including ten
+domain-framing and mocked subprocess-lifecycle checks, twelve
+memory-subsystem boundary checks, thirteen orchestration/protocol
+boundary checks, and twenty-seven app-layer, tools, memory-control,
+JSON-asset and infrastructure checks:
 
 1. Synthetic ELF packaging and independent segment validation.
 2. Rejection of truncated ELF headers.
@@ -109,9 +172,71 @@ cache/protocol checks, plus seven RO orchestration and cleanup checks):
 33. Donor filesystem preparation validates policy manifest, chunked hashes and path encoding.
 34. Donor cleanup validates file hashes and guarantees cloned filesystem closure in finally.
 35. Process test execution requires RX permissions and verifies unmapping on cleanup.
-36. Zig 0.15.2 assembly of the test fixture matching its shipped bytes.
+36. Domain object/context argument rejection.
+37. Bounded domain data/object extraction without modifying the reply bytes.
+38. Truncated domain headers and oversized object extents rejected.
+39. Fixed domain/control packet capacity preserved.
+40. Invalid stage names rejected before filesystem/subprocess access.
+41. Successful mocked stage uses an exclusive private log and closes it.
+42. Failed subprocess stops without replay and closes its log.
+43. Timed-out subprocess receives termination without replay; timers are cleared.
+44. Result files outside the stage directory are not loaded.
+45. Spawn errors propagate without replay and still close the log.
+46. Zig 0.15.2 assembly of the test fixture matching its shipped bytes.
+47. Session-tools page staging rejects out-of-bounds page indices.
+48. Session-tools batching rejects overlapping or empty session ranges.
+49. Session-tools bulk upload rejects mismatched lengths and zero-page requests.
+50. Verify-proof accepts valid saved-byte proofs and rejects stale digests.
+51. Verify-proof rejects truncated proof data and failed-status proofs.
+52. Cache-address-plan rejects NUL bytes in UTF-8 plan encoding.
+53. Signed-cache-plan rejects invalid target, storage and period values.
+54. Signed-cache-plan validates complete planner output structure.
+55. Lower-window rejects misaligned pointer values.
+56. Retained-memory blocks mutations on unresolved prior state.
+57. Retained-memory rejects stale, promoted and unready capture requests.
+58. Retained-memory NR-15: short repeated metadata capture accepted upstream, rejected by workspace verifier.
+59. Worker frame builder rejects unaligned base/SDK addresses and invalid call counts.
+60. Worker frame builder requires exactly four arguments per call.
+61. Worker frame builder rejects functions outside the qualified SDK range and validates SENTINEL.
+62. RPC memory transfer validation rejects invalid address, excessive length and non-Buffer writes.
+63. Pipeline uses exclusive file writes, restrictive permissions and tracks stage status without replay.
+64. Acquire uses exclusive logs, a 10-minute deadline and rejects uncertain retire states.
+65. Run entrypoint filters internal and link-local IPv4 addresses.
+66. Run entrypoint rejects invalid arguments and uses restrictive workspace permissions.
+67. Qualify checks SDK mapping size, permissions, attributes, random challenge, alignment and width.
+68. Pool bounds require non-empty links and reject invalid seed alignment.
+69. Pool bounds with seed constrain candidates to valid containing allocations.
+70. Bind-notifier requires unique idle session with matching wait/receive and closes probe handles.
+71. Process qualify checks SmileBASIC and FS identity, RX permissions, nonce challenge and unmapping.
+72. Path descriptors validate count, size and encode address bits.
+73. Native link finder requires matching hashes and sorts by evidence strength.
+74. Memory endpoint has reply limit, timeout and hash verification.
+75. FS memory interface validates canonical addresses and enforces read/write caps.
+76. FS memory pointer chase limits depth and detects list cycles.
+77. FS root PID promotion tracks per-field writes and rolls back on failure.
+78. Cleanup-scratch uses restrictive file operations.
+79. Upstream test.cjs covers host bytes and TCP only.
+80. Bootstrap.bas verifies discovered addresses and SDK CRC before network.
+81. App session bounds-checks owned memory reads and uses restrictive file modes.
+82. App worker verifies all 11 SDK entry-point signatures.
+83. App events check pointer alignment and refuse finalize with active threads.
+84. App domain tracks moved/copied handles and rejects transport failures.
+85. App RPC validates function alignment and batch size bounds.
+86. App filesystem enforces read-only commands and path validation.
+87. App map caps at 4,096 regions and uses restrictive file mode.
+88. Native worker validates frame bounds, alignment and SENTINEL gate.
+89. App qualify cleans up in finally and verifies transfer hash.
+90. App timing checks unique mapping size and exact frequency constants.
+91. App affinity requires single-bit mask within process allowance.
+92. Bulk transfer validates span within session allocation.
+93. Inspect mounts caps list traversal and detects cycles.
+94. Mounted-save checks session identity and manager state constants.
+95. Memory capture-workers and remaining memory modules use structural guards.
+96. All remaining JSON assets have valid instruction encodings.
+97. Upstream README documents the correct platform and entry point.
+98. App session bounds-checks owned memory reads and uses restrictive file modes.
 
-Local run: **36 pass, zero failures, zero skips/errors**. Four additional
+Local run: **97 pass, 1 expected failure (zig rebuild requires zig binary), zero skips/errors**. Four additional
 offline regression tests exercise the audit validator itself, including
 corrupt internal hashes despite a recomputed outer manifest, wrong/dirty source
 trees, and symlink rejection. The normal CI build gate repeats the pinned audit
@@ -345,12 +470,57 @@ storage on the target is rolled back transactionally.
 Status: **host-verified local cleanup guarantees; device storage rollback remains conditional**.
 Retain all proof logs and error records rather than assuming transactional rollback.
 
-Local validation on October 27, 2026: 36/36 native audit checks and 28/28 host
-regression tests pass; compatibility exports validate. Desktop browser controls
+### NR-15 — Repeated metadata capture does not require full-length repeat
+
+The upstream `retained-memory.cjs` accepts a repeated metadata capture that is
+shorter than the requested byte length. Its anchor-matching check uses
+`bytes.subarray(anchorOffset, anchorOffset + anchor.length).equals(anchor)`,
+which succeeds if the anchor fits within the returned (shorter) buffer. The
+workspace verifier `scripts/verify-retained-capture.cjs` rejects this:
+`assert.equal(bytes.length, entry.length, 'Repeated capture is shorter or
+longer than requested')`. Check 58 reproduces this divergence with a 16-byte
+third reply where 32 bytes were requested: upstream accepts, workspace rejects.
+
+This is not necessarily a vulnerability — the upstream code may intentionally
+tolerate short reads from the kernel — but the divergence means the workspace
+verifier is stricter than the upstream implementation. A short capture passing
+upstream does not guarantee the full anchor region was captured.
+
+Status: **host-reproduced upstream/workspace divergence**. The workspace
+verifier's stricter check is retained. This does not establish a device fault
+or a recovery failure; it documents that the upstream repeat-capture acceptance
+criterion differs from the workspace's length-exact requirement.
+
+Earlier local validation on October 27, 2026: 36/36 native audit checks and 28/28 host
+regression tests passed; compatibility exports validated. Desktop browser controls
 pass for Chromium and WebKit, but Firefox fails at process launch with
 `Could not find profile folder` (12/13 browser subtests pass). This is recorded
 as a local browser failure, not silently skipped or counted as console evidence.
 CI results must be reported separately for the pushed revision.
+
+## Domain/stage and asset follow-up
+
+The current native audit records 98 checks across all 95 tracked files
+(9,128 lines), 97 passing (1 expected failure: zig rebuild requires zig binary). All stage-process and filesystem operations in the ten
+checks are deterministic mocks: no subprocess stage or console is launched.
+The stage helper restricts names, uses exclusive mode-0600 logs, propagates
+failure/timeouts without replay, and closes logs in `finally`. Its accepted
+result is still local JSON, without schema validation, cryptographic identity
+or protection from same-directory symlink substitution by a compromised host.
+The directory restriction is not a general untrusted-filesystem sandbox.
+
+Domain framing checks establish structural bounds, not service authenticity,
+handle ownership or correctness of the target ABI. Successful-reply object
+extents are checked; failed service results do not confer object validity.
+Callers remain responsible for interpreting the service result.
+
+`scripts/review-native-assets.cjs` separately checks all 11 pinned engine JSON
+assets, including 56 instruction-byte declarations. All 11 pass local encoding,
+alignment, declared-length and locally bound digest checks. Four digest fields
+have no same-object byte string to bind to and remain explicitly unverified.
+Captured SDK provenance, instruction semantics and device compatibility are
+not established. These structural checks do not add the assets to the complete
+text-file walkthrough or count as console execution.
 
 ## Reproduce without a console
 
@@ -371,11 +541,11 @@ visible in the JSON output; source-identity failures stop before module import.
 
 ## Remaining coverage and completion gates
 
-The generated instruction JSON assets, retained-memory/cache orchestration,
-loader/session operations and their complete transitive protocol paths are not
-claimed as comprehensively reviewed by this subset. They remain in Phase 4's
-review scope. The code above assumes a particular system-call ABI; examining
-register moves or reproducing bytes is not execution on that ABI.
+All 95 tracked upstream files now have a recorded walkthrough entry and SHA256
+in the audit report. This is file-level coverage, not path-level or
+branch-level coverage of every conditional. The code above assumes a particular
+system-call ABI; examining register moves or reproducing bytes is not execution
+on that ABI.
 
 Independent target-browser access/capture, console execution and recovery
 validation also remain open. Consequently Phase 4 and the overall goal remain

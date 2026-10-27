@@ -28,6 +28,7 @@ GRAND_PASS=0
 GRAND_FAIL=0
 GRAND_SKIP=0
 GRAND_ERROR=0
+REPORT_FAILURES=0
 
 for FILE in $RESULT_FILES; do
   BASENAME=$(basename "$FILE")
@@ -35,6 +36,23 @@ for FILE in $RESULT_FILES; do
   if ! jq empty "$FILE" 2>/dev/null; then
     echo ""
     echo "  [WARN] $BASENAME: invalid JSON, skipping"
+    continue
+  fi
+
+  REPORT_TYPE=$(jq -r '.report_type // empty' "$FILE")
+  if [ -n "$REPORT_TYPE" ] && jq -e '.summary == null and .results == null' "$FILE" >/dev/null; then
+    echo ""
+    echo "--- $BASENAME ---"
+    echo "  Evidence report: $REPORT_TYPE (not counted as runtime tests)"
+    case "$REPORT_TYPE" in
+      native-asset-structural-review)
+        jq -c '.counts' "$FILE"
+        ASSET_FAILURES=$(jq -er '.counts.failed | select(type == "number" and . >= 0 and floor == .)' "$FILE")
+        REPORT_FAILURES=$((REPORT_FAILURES + ASSET_FAILURES))
+        ;;
+      native-source-coverage-inventory|browser-entry-evidence) ;;
+      *) echo "  Unknown report type; cannot summarize safely"; REPORT_FAILURES=$((REPORT_FAILURES + 1)) ;;
+    esac
     continue
   fi
 
@@ -75,6 +93,6 @@ echo "   Skipped: $GRAND_SKIP"
 echo "   Errors:  $GRAND_ERROR"
 echo "======================================"
 
-if [ "$GRAND_FAIL" -gt 0 ] || [ "$GRAND_ERROR" -gt 0 ]; then
+if [ "$GRAND_FAIL" -gt 0 ] || [ "$GRAND_ERROR" -gt 0 ] || [ "$REPORT_FAILURES" -gt 0 ]; then
   exit 1
 fi

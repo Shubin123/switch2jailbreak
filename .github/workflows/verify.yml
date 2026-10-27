@@ -69,11 +69,14 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npx playwright install --with-deps chromium firefox webkit
       - run: npm run test:browser
+      - run: node scripts/validate-browser-entry.cjs results/entry-*.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: desktop-browser-evidence
-          path: results/browser-*.json
+          path: |
+            results/browser-*.json
+            results/entry-*.json
           retention-days: 30
 
   build-verify:
@@ -102,6 +105,8 @@ jobs:
           git -C "$RUNNER_TEMP/native-review-upstream" fetch -q --depth=1 https://gitlab.com/pepsipu/ns2jb.git "$REVISION"
           git -C "$RUNNER_TEMP/native-review-upstream" checkout -q --detach FETCH_HEAD
           node scripts/review-native.cjs "$RUNNER_TEMP/native-review-upstream" results/native-review.json "$RUNNER_TEMP/zig-0.15.2/zig"
+          node scripts/native-coverage.cjs "$RUNNER_TEMP/native-review-upstream" results/native-coverage.json
+          node scripts/review-native-assets.cjs "$RUNNER_TEMP/native-review-upstream" results/native-assets.json
           npm ci --ignore-scripts
           node scripts/validate-results.cjs results/native-review.json
 
@@ -113,6 +118,8 @@ jobs:
           path: |
             results/build-verify-*.json
             results/native-review.json
+            results/native-coverage.json
+            results/native-assets.json
           retention-days: 30
 
   release-check:
