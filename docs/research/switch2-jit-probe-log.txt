@@ -1,0 +1,28 @@
+[http] GET 192.168.1.181:8080/
+[ OK] Mozilla/5.0 (Nintendo Switch; WifiWebAuthApplet) AppleWebKit/613.0 (KHTML, like Gecko) NF/7.0.3.12.11 NintendoBrowser/5.2.0.55481
+[ OK] http://192.168.1.181:8080/
+[ OK] undefined / structuredClone:function / WeakRef:function
+[ OK] wasm error: Can't find variable: WebAssembly
+[ OK] 169,193,115,93
+[ OK] function / generator:function / import.meta:undefined
+[ OK] no webgl
+[ OK] 4
+[ OK] undefined
+[ OK] 44043 / 44043 / 44043
+[ OK] 4
+[ OK] undefined / caches:undefined / Notification:undefined
+[ OK] {"timestamp":"2026-10-27T21:10:28.484Z","url":"http://192.168.1.181:8080/","ua":"Mozilla/5.0 (Nintendo Switch; WifiWebAuthApplet) AppleWebKit/613.0 (KHTML, like Gecko) NF/7.0.3.12.11 NintendoBrowser/5.2.0.55481","screen":"1920x1080","dpr":1,"cores":4,"touch":0,"wasm":false,"bigint":true,"sab":false,"proxy":true,"weakref":true,"fetch":true,"worker":true,"crypto":true,"webgl":false,"indexeddb":true,"blob":true,"structuredClone":true,"async":true,"generator":true}
+[http] GET 192.168.1.181:8080/
+[ OK] first loop: 49ms, second loop: 50ms (JIT warmup visible if second is faster)
+[ OK] {"describeArray":false,"gcAvail":false,"noInline":false,"noFTL":false,"dollarVM":false,"jscOptions":false}
+[ OK] {"f64Read":1.1,"dvGetF64":1.1,"abByteLen":64,"abTransfer":false,"abResize":false,"abDetach":true}
+[ OK] {"f64ArrayType":"Array","objArrayType":"Array","f64Len":3,"objLen":3,"holeyConvert":"object","origIntact":"number"}
+[ OK] {"objCount":100,"lastProp":true,"objAsFloat":"7ff8000000000000"}
+[ OK] {"proxyResult":42,"normalResult":1.1,"proxyType":"number","normalType":"number"}
+[ OK] {"before":"number","after":"number","a1_intact":"number","a2_val":1.1}
+[ OK] {"hex":"414141414141","fits64":true,"readBack":"414141414141","asFloat":3.54484805889626e-310}
+[ OK] {"normal":5.5,"oob":-1,"neg":-1,"type_normal":"number","type_oob":"number","type_neg":"number"}
+[ OK] {"aLen":8,"bLen":8,"sameProto":true,"aHasX":true,"bHasX":false,"a0bits":"3ff199999999999a","b0bits":"3ff199999999999a"}
+[ OK] {"s1":1.1,"s1type":"number","s2":{},"s2type":"object","confused":false}
+[ OK] {"counterAfterWarmup":50000,"plainRead":2.2,"plainType":"number","counterFinal":50000}
+[ OK] {"normalResult":43,"osrResult":0,"sideLen":1,"afterOsr":100,"stable":true}
