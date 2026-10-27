@@ -227,6 +227,26 @@ const httpServer = http.createServer(async (req, res) => {
     return;
   }
 
+  // Serve script files for <script src="/scripts/..."> loading
+  if (req.method === 'GET' && req.url.startsWith('/scripts/')) {
+    const scriptName = path.basename(req.url.split('?')[0]);
+    const scriptPath = path.join(__dirname, scriptName);
+    try {
+      const code = fs.readFileSync(scriptPath, 'utf8');
+      res.writeHead(200, {
+        'Content-Type': 'application/javascript; charset=utf-8',
+        'Access-Control-Allow-Origin': '*',
+        'Cache-Control': 'no-store',
+      });
+      res.end(code);
+      console.log(`[http] served script: ${scriptName} (${code.length} bytes)`);
+    } catch(e) {
+      res.writeHead(404, { 'Content-Type': 'text/plain' });
+      res.end('Not found');
+    }
+    return;
+  }
+
   // Log interesting requests (skip polls)
   const host = req.headers.host || '';
   if (host.includes('nintendo') || host.includes('conntest')) {
@@ -270,7 +290,8 @@ function startHTTP(dnsActive) {
     console.log('║  Capabilities stream here. Type JS to eval.          ║');
     console.log('║                                                      ║');
     console.log('╠═══════════════════════════════════════════════════════╣');
-    console.log('║  :list = clients  :caps = refresh  :quit = exit      ║');
+    console.log('║  :trigger = CVE test  :exploit = full chain          ║');
+    console.log('║  :load <file>  :list  :caps  :help  :quit            ║');
     console.log('╚═══════════════════════════════════════════════════════╝');
     console.log('');
     console.log('Waiting for Switch 2 to connect...');
@@ -295,6 +316,47 @@ function startHTTP(dnsActive) {
           rl.prompt(); return;
         }
         if (t === ':caps') { commands.push({ id: ++cmdId, type: 'request-caps' }); console.log('Requested refresh'); rl.prompt(); return; }
+        if (t.startsWith(':load ')) {
+          const filePath = t.slice(6).trim();
+          const resolved = path.resolve(filePath);
+          try {
+            const code = fs.readFileSync(resolved, 'utf8');
+            commands.push({ id: ++cmdId, type: 'eval', code });
+            console.log(`Loaded ${path.basename(resolved)} (${code.length} bytes, cmd #${cmdId})`);
+            if (!Object.keys(clients).length) console.log('(queued — no clients yet)');
+          } catch(e) {
+            console.log(`Failed to load: ${e.message}`);
+          }
+          rl.prompt(); return;
+        }
+        if (t === ':trigger') {
+          const triggerPath = path.join(__dirname, 'cve-2023-37450-trigger.js');
+          try {
+            const code = fs.readFileSync(triggerPath, 'utf8');
+            commands.push({ id: ++cmdId, type: 'eval', code });
+            console.log(`Loaded trigger test (${code.length} bytes, cmd #${cmdId})`);
+          } catch(e) { console.log(`Failed: ${e.message}`); }
+          rl.prompt(); return;
+        }
+        if (t === ':exploit') {
+          const exploitPath = path.join(__dirname, 'exploit-switch2.js');
+          try {
+            const code = fs.readFileSync(exploitPath, 'utf8');
+            commands.push({ id: ++cmdId, type: 'eval', code });
+            console.log(`Loaded full exploit (${code.length} bytes, cmd #${cmdId})`);
+          } catch(e) { console.log(`Failed: ${e.message}`); }
+          rl.prompt(); return;
+        }
+        if (t === ':help' || t === ':h') {
+          console.log('  :trigger  — send CVE-2023-37450 trigger test');
+          console.log('  :exploit  — send full exploit (all stages)');
+          console.log('  :load <f> — send any JS file as eval');
+          console.log('  :list     — show connected clients');
+          console.log('  :caps     — refresh capabilities');
+          console.log('  :quit     — exit');
+          console.log('  <js code> — eval arbitrary JS on Switch');
+          rl.prompt(); return;
+        }
         commands.push({ id: ++cmdId, type: 'eval', code: t });
         if (!Object.keys(clients).length) console.log('(queued — no clients yet)');
         rl.prompt();
