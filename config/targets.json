@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0.0",
-  "last_updated": "2026-10-26",
+  "last_updated": "2026-10-27",
   "targets": [
     {
       "id": "ns2jb-smilebasic",
@@ -8,8 +8,8 @@
       "upstream": {
         "url": "https://gitlab.com/pepsipu/ns2jb",
         "branch": "main",
-        "last_known_commit": "95f5525",
-        "last_checked": "2026-10-26"
+        "last_known_commit": "95f5525089273c5fce0b95047f3600f8442e96ae",
+        "last_checked": "2026-10-27"
       },
       "firmware": {
         "version": "23.0.1",
