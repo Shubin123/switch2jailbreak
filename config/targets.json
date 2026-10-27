@@ -1,0 +1,74 @@
+{
+  "schema_version": "1.0.0",
+  "last_updated": "2026-10-26",
+  "targets": [
+    {
+      "id": "ns2jb-smilebasic",
+      "name": "ns2jb via SmileBASIC",
+      "upstream": {
+        "url": "https://gitlab.com/pepsipu/ns2jb",
+        "branch": "main",
+        "last_known_commit": "95f5525",
+        "last_checked": "2026-10-26"
+      },
+      "firmware": {
+        "version": "23.0.1",
+        "confirmed_working": true,
+        "other_versions_tested": []
+      },
+      "entry_point": {
+        "app": "SmileBASIC",
+        "version": "4.4.9",
+        "available": false,
+        "notes": "Delisted from eShop as of 2026-10-26"
+      },
+      "host_requirements": {
+        "node_js": ">=22.0.0",
+        "platforms": ["macOS", "Linux"],
+        "network_port": 39380,
+        "free_save_space_mib": 20
+      },
+      "status": "source_available"
+    },
+    {
+      "id": "ns2jb-webkit",
+      "name": "ns2jb via WebKit / browser",
+      "upstream": {
+        "url": null,
+        "branch": null,
+        "last_known_commit": null,
+        "last_checked": "2026-10-26"
+      },
+      "firmware": {
+        "version": "23.0.1",
+        "confirmed_working": false,
+        "other_versions_tested": []
+      },
+      "entry_point": {
+        "app": "Switch 2 browser",
+        "version": null,
+        "available": false,
+        "notes": "Announced as future work. Community reports claim testers sought (Oct 24). No public source."
+      },
+      "host_requirements": {
+        "node_js": null,
+        "platforms": [],
+        "network_port": null,
+        "free_save_space_mib": null
+      },
+      "status": "unconfirmed"
+    }
+  ],
+  "gist": {
+    "id": "c1a5a09ec5005e93cf86380260060dac",
+    "owner": "Shubin123",
+    "url": "https://gist.github.com/Shubin123/c1a5a09ec5005e93cf86380260060dac",
+    "last_known_revision": null,
+    "last_checked": null
+  },
+  "references": {
+    "blog": "https://pepsipu.com/blog/2026-10-switch2-jailbreak-ns2jb/",
+    "upstream_repo": "https://gitlab.com/pepsipu/ns2jb",
+    "subreddit": "https://www.reddit.com/r/switch2hacks/"
+  }
+}

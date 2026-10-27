@@ -13,16 +13,32 @@ Nintendo Switch 2, firmware **23.0.1**.
 - **SmileBASIC 4.4.9**: delisted from the eShop. Not currently obtainable
   through official channels.
 
-## What's here
+## Project structure
 
-| Path | Purpose |
-|------|---------|
-| `scripts/check-env.sh` | Verify macOS prerequisites (Node.js, network) |
-| `scripts/check-upstream.sh` | Pull latest commit info and README from upstream |
-| `scripts/monitor-upstream.sh` | Watch for new commits (run periodically or via cron) |
-| `docs/firmware-notes.md` | Firmware preservation and version check guide |
-| `docs/research-log.md` | Chronological log of verified findings |
-| `docs/environment-setup.md` | macOS environment setup instructions |
+```
+switch2jailbreak/
+├── docs/
+│   ├── baseline.md           ← Phase 1 claims inventory and classification
+│   ├── firmware-notes.md     ← Firmware preservation guide
+│   ├── research-log.md       ← Chronological verified findings
+│   └── environment-setup.md  ← macOS prereqs and network setup
+├── config/
+│   └── targets.json          ← Target versions, upstream URLs, entry points
+├── tests/
+│   └── javascript-features/
+│       └── feature-detect.js ← JS engine capability tests (Node + browser)
+├── results/
+│   ├── schema.json           ← JSON schema for test output
+│   └── local-baseline-*.json ← Baseline results from local Node.js
+├── scripts/
+│   ├── check-upstream.sh     ← Verify upstream repo, Gist, and reference URLs
+│   ├── monitor-upstream.sh   ← Periodic upstream watch (cron or manual)
+│   ├── summarize-results     ← Aggregate test result JSON files
+│   └── check-env.sh          ← Verify macOS prerequisites
+└── .github/
+    └── workflows/
+        └── verify.yml        ← CI: upstream checks + config validation
+```
 
 ## Quick start
 
@@ -30,12 +46,26 @@ Nintendo Switch 2, firmware **23.0.1**.
 # Verify your Mac is ready
 ./scripts/check-env.sh
 
-# Check upstream for changes
+# Check upstream for changes (tracks state between runs)
 ./scripts/check-upstream.sh
+
+# Run JS feature-detection tests (local baseline)
+node tests/javascript-features/feature-detect.js > results/local-baseline.json
+
+# Summarize all test results
+./scripts/summarize-results
 
 # Watch for new commits (runs every 30 min by default)
 ./scripts/monitor-upstream.sh
 ```
+
+## Phase progress
+
+- [x] **Phase 1** — Baseline report and claims inventory (`docs/baseline.md`)
+- [ ] **Phase 2** — Upstream and build verification
+- [ ] **Phase 3** — Compatibility test harness (started: `tests/javascript-features/`)
+- [ ] **Phase 4** — Security and isolation review
+- [ ] **Phase 5** — Reproducible release and publication
 
 ## References
 

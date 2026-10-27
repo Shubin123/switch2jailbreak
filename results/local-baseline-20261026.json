@@ -1,0 +1,200 @@
+{
+  "schema_version": "1.0.0",
+  "run_id": "2026-10-27T06-47-41-902Z-feat",
+  "timestamp": "2026-10-27T06:47:41.903Z",
+  "target_id": "local-baseline",
+  "environment": {
+    "os": "MacIntel",
+    "node_version": "v26.12.0",
+    "browser_ua": "Node.js/26"
+  },
+  "results": [
+    {
+      "test_id": "js-feat-001",
+      "category": "javascript-feature",
+      "name": "ES2020: optional chaining",
+      "status": "pass",
+      "expected": "true",
+      "actual": "true",
+      "duration_ms": 0
+    },
+    {
+      "test_id": "js-feat-002",
+      "category": "javascript-feature",
+      "name": "ES2020: nullish coalescing",
+      "status": "pass",
+      "expected": "true",
+      "actual": "true",
+      "duration_ms": 0
+    },
+    {
+      "test_id": "js-feat-003",
+      "category": "javascript-feature",
+      "name": "ES2020: BigInt",
+      "status": "pass",
+      "expected": "true",
+      "actual": "true",
+      "duration_ms": 0
+    },
+    {
+      "test_id": "js-feat-004",
+      "category": "javascript-feature",
+      "name": "ES2020: Promise.allSettled",
+      "status": "pass",
+      "expected": "true",
+      "actual": "true",
+      "duration_ms": 0
+    },
+    {
+      "test_id": "js-feat-005",
+      "category": "javascript-feature",
+      "name": "ES2020: globalThis",
+      "status": "pass",
+      "expected": "true",
+      "actual": "true",
+      "duration_ms": 0
+    },
+    {
+      "test_id": "js-feat-006",
+      "category": "javascript-feature",
+      "name": "ES2021: String.prototype.replaceAll",
+      "status": "pass",
+      "expected": "true",
+      "actual": "true",
+      "duration_ms": 0
+    },
+    {
+      "test_id": "js-feat-007",
+      "category": "javascript-feature",
+      "name": "ES2021: Promise.any",
+      "status": "pass",
+      "expected": "true",
+      "actual": "true",
+      "duration_ms": 0
+    },
+    {
+      "test_id": "js-feat-008",
+      "category": "javascript-feature",
+      "name": "ES2021: WeakRef",
+      "status": "pass",
+      "expected": "true",
+      "actual": "true",
+      "duration_ms": 0
+    },
+    {
+      "test_id": "js-feat-009",
+      "category": "javascript-feature",
+      "name": "ES2022: Array.prototype.at",
+      "status": "pass",
+      "expected": "true",
+      "actual": "true",
+      "duration_ms": 0
+    },
+    {
+      "test_id": "js-feat-010",
+      "category": "javascript-feature",
+      "name": "ES2022: Object.hasOwn",
+      "status": "pass",
+      "expected": "true",
+      "actual": "true",
+      "duration_ms": 0
+    },
+    {
+      "test_id": "js-feat-011",
+      "category": "javascript-feature",
+      "name": "ES2022: Error.cause",
+      "status": "pass",
+      "expected": "true",
+      "actual": "true",
+      "duration_ms": 0
+    },
+    {
+      "test_id": "js-feat-012",
+      "category": "javascript-feature",
+      "name": "ES2023: Array.prototype.findLast",
+      "status": "pass",
+      "expected": "true",
+      "actual": "true",
+      "duration_ms": 0
+    },
+    {
+      "test_id": "js-feat-013",
+      "category": "javascript-feature",
+      "name": "ES2023: Array.prototype.toSorted",
+      "status": "pass",
+      "expected": "true",
+      "actual": "true",
+      "duration_ms": 0
+    },
+    {
+      "test_id": "js-feat-014",
+      "category": "javascript-feature",
+      "name": "ES2024: Promise.withResolvers",
+      "status": "pass",
+      "expected": "true",
+      "actual": "true",
+      "duration_ms": 0
+    },
+    {
+      "test_id": "js-feat-015",
+      "category": "javascript-feature",
+      "name": "ES2024: Object.groupBy",
+      "status": "pass",
+      "expected": "true",
+      "actual": "true",
+      "duration_ms": 0
+    },
+    {
+      "test_id": "js-feat-016",
+      "category": "javascript-feature",
+      "name": "WebAPI: fetch",
+      "status": "pass",
+      "expected": "true",
+      "actual": "true",
+      "duration_ms": 0
+    },
+    {
+      "test_id": "js-feat-017",
+      "category": "javascript-feature",
+      "name": "WebAPI: TextEncoder / TextDecoder",
+      "status": "pass",
+      "expected": "true",
+      "actual": "true",
+      "duration_ms": 0
+    },
+    {
+      "test_id": "js-feat-018",
+      "category": "javascript-feature",
+      "name": "WebAPI: structuredClone",
+      "status": "pass",
+      "expected": "true",
+      "actual": "true",
+      "duration_ms": 0
+    },
+    {
+      "test_id": "js-feat-019",
+      "category": "javascript-feature",
+      "name": "WebAPI: AbortController",
+      "status": "pass",
+      "expected": "true",
+      "actual": "true",
+      "duration_ms": 1
+    },
+    {
+      "test_id": "js-feat-020",
+      "category": "javascript-feature",
+      "name": "WebAPI: crypto.getRandomValues",
+      "status": "pass",
+      "expected": "true",
+      "actual": "true",
+      "duration_ms": 1
+    }
+  ],
+  "summary": {
+    "total": 20,
+    "passed": 20,
+    "failed": 0,
+    "skipped": 0,
+    "errors": 0
+  }
+}

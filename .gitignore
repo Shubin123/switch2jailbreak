@@ -1,0 +1,13 @@
+# Local state from upstream checker
+.upstream-state.json
+
+# OS files
+.DS_Store
+
+# Editor files
+*.swp
+*.swo
+*~
+
+# Node (if tests use it later)
+node_modules/

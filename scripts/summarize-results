@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+RESULTS_DIR="$SCRIPT_DIR/../results"
+
+if ! command -v jq >/dev/null 2>&1; then
+  echo "Error: jq is required. Install with: brew install jq" >&2
+  exit 1
+fi
+
+# Find all JSON result files (exclude the schema)
+RESULT_FILES=$(find "$RESULTS_DIR" -name '*.json' ! -name 'schema.json' -type f | sort)
+
+if [ -z "$RESULT_FILES" ]; then
+  echo "No test result files found in results/."
+  echo "Run the test suite first, then re-run this script."
+  exit 0
+fi
+
+echo "======================================"
+echo " Test Results Summary"
+echo " $(date '+%Y-%m-%d %H:%M:%S %Z')"
+echo "======================================"
+
+GRAND_TOTAL=0
+GRAND_PASS=0
+GRAND_FAIL=0
+GRAND_SKIP=0
+GRAND_ERROR=0
+
+for FILE in $RESULT_FILES; do
+  BASENAME=$(basename "$FILE")
+
+  if ! jq empty "$FILE" 2>/dev/null; then
+    echo ""
+    echo "  [WARN] $BASENAME: invalid JSON, skipping"
+    continue
+  fi
+
+  RUN_ID=$(jq -r '.run_id // "unknown"' "$FILE")
+  TIMESTAMP=$(jq -r '.timestamp // "unknown"' "$FILE")
+  TARGET=$(jq -r '.target_id // "unknown"' "$FILE")
+  TOTAL=$(jq -r '.summary.total // (.results | length)' "$FILE")
+  PASSED=$(jq -r '.summary.passed // ([.results[] | select(.status == "pass")] | length)' "$FILE")
+  FAILED=$(jq -r '.summary.failed // ([.results[] | select(.status == "fail")] | length)' "$FILE")
+  SKIPPED=$(jq -r '.summary.skipped // ([.results[] | select(.status == "skip")] | length)' "$FILE")
+  ERRORS=$(jq -r '.summary.errors // ([.results[] | select(.status == "error")] | length)' "$FILE")
+
+  echo ""
+  echo "--- $BASENAME ---"
+  echo "  Run:       $RUN_ID"
+  echo "  Time:      $TIMESTAMP"
+  echo "  Target:    $TARGET"
+  echo "  Results:   $TOTAL total — $PASSED pass, $FAILED fail, $SKIPPED skip, $ERRORS error"
+
+  if [ "$FAILED" -gt 0 ] || [ "$ERRORS" -gt 0 ]; then
+    echo "  Failures:"
+    jq -r '.results[] | select(.status == "fail" or .status == "error") | "    [\(.status)] \(.test_id): \(.name) — \(.error_message // .actual // "no details")"' "$FILE"
+  fi
+
+  GRAND_TOTAL=$((GRAND_TOTAL + TOTAL))
+  GRAND_PASS=$((GRAND_PASS + PASSED))
+  GRAND_FAIL=$((GRAND_FAIL + FAILED))
+  GRAND_SKIP=$((GRAND_SKIP + SKIPPED))
+  GRAND_ERROR=$((GRAND_ERROR + ERRORS))
+done
+
+echo ""
+echo "======================================"
+echo " Grand Total: $GRAND_TOTAL tests"
+echo "   Passed:  $GRAND_PASS"
+echo "   Failed:  $GRAND_FAIL"
+echo "   Skipped: $GRAND_SKIP"
+echo "   Errors:  $GRAND_ERROR"
+echo "======================================"
+
+if [ "$GRAND_FAIL" -gt 0 ] || [ "$GRAND_ERROR" -gt 0 ]; then
+  exit 1
+fi
