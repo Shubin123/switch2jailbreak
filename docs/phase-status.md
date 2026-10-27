@@ -28,6 +28,14 @@ Phase 4 is open.
 
 ## Gates that cannot be inferred from green CI
 
+The user-proposed SwitchBru / BrowseDNS captive-portal route is now recorded in
+`site/browser-entry.html` as an assumed navigation context, without SmileBASIC
+as a browser-access prerequisite. It has not been exercised by this workspace.
+Even successful navigation would not establish a WebKit vulnerability, native
+loader, payload execution, or recovery. The existing pinned native package is
+still SmileBASIC-specific; it is not a browser execution chain. Phase 4 remains
+open and no target observations have been added on the strength of this assumption.
+
 1. Complete the remaining upstream native-chain review at the pinned revision,
    recording coverage, findings, and unresolved assumptions. The core C/assembly
    payload and selected host interfaces now have a recorded walkthrough, exact

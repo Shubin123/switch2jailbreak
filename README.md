@@ -130,6 +130,11 @@ and open `http://127.0.0.1:8000`. Keep the dated site summary aligned with
 
 ### Hardware test package
 
+The user-proposed browser path is documented separately in
+`site/browser-entry.html`: assume SwitchBru / BrowseDNS provides page navigation,
+without SmileBASIC. This remains an untested access assumption, not a browser
+exploit or native payload loader. No verified browser execution chain is available.
+
 `site/hardware-testing.html` provides a complete pinned upstream download and
 manual preflight notes, not a browser exploit or automatic console launcher.
 Regenerate the download with `bash scripts/package-hardware.sh /path/to/ns2jb`.
