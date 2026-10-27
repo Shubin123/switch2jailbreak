@@ -45,6 +45,7 @@ jobs:
 
       - name: Run compatibility tests
         run: |
+          node --test tests/browser-loading.test.cjs
           chmod +x tests/run-all.sh
           tests/run-all.sh
 
