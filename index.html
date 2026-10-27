@@ -165,10 +165,12 @@
 
       <div id="setupBox" class="setup-box">
         <p><strong>Step 1:</strong> On your Mac, run: <code>node scripts/debug-server.cjs</code></p>
-        <p style="margin-top:10px"><strong>Step 2:</strong> Enter your Mac's IP (shown by the server) and tap Connect — this will navigate you to the debug server on your LAN:</p>
-        <div class="setup-row" style="margin-top:8px">
+        <p style="margin-top:10px"><strong>Step 2:</strong> Tap the link below to connect to the debug server on your LAN:</p>
+        <p id="lanLink" style="margin-top:10px;font-size:1.2rem;text-align:center"><a href="http://192.168.1.181:8080" id="lanAnchor">http://192.168.1.181:8080</a></p>
+        <p style="margin-top:10px;color:var(--dim);font-size:.85rem">Different IP? Enter it here:</p>
+        <div class="setup-row" style="margin-top:6px">
           <input id="hostInput" type="text" placeholder="192.168.1.x" autocomplete="off" autocorrect="off" spellcheck="false">
-          <button id="connectBtn" type="button">Connect</button>
+          <button id="connectBtn" type="button">Go</button>
         </div>
       </div>
 
@@ -231,9 +233,26 @@
   } else {
     try {
       var saved = localStorage.getItem('debug-host');
-      if (saved) hostInput.value = saved;
+      if (saved) {
+        hostInput.value = saved;
+        updateLanLink(saved);
+      }
     } catch(e) {}
   }
+
+  var lanAnchor = document.getElementById('lanAnchor');
+  function updateLanLink(ip) {
+    var host = ip;
+    if (host.indexOf(':') === -1) host += ':8080';
+    if (host.indexOf('http') !== 0) host = 'http://' + host;
+    lanAnchor.href = host;
+    lanAnchor.textContent = host;
+  }
+
+  hostInput.addEventListener('input', function() {
+    var v = hostInput.value.trim();
+    if (v) updateLanLink(v);
+  });
 
   connectBtn.addEventListener('click', function() {
     var host = hostInput.value.trim();
@@ -241,11 +260,7 @@
     if (host.indexOf(':') === -1) host += ':8080';
     if (host.indexOf('http') !== 0) host = 'http://' + host;
     try { localStorage.setItem('debug-host', hostInput.value.trim()); } catch(e) {}
-    if (location.protocol === 'https:') {
-      window.location.href = host;
-      return;
-    }
-    connectTo(host);
+    window.location.href = host;
   });
 
   hostInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') connectBtn.click(); });
