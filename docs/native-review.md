@@ -10,7 +10,7 @@ proof of console compatibility, or independent hardware reproduction.
 
 ## Coverage and source identity
 
-The walkthrough covered these 12 complete text files (1,217 lines including
+The walkthrough covered these 14 complete text files (1,365 lines including
 comments and manifest data). The audit report records each file's SHA256 and
 line count. These identify the reviewed sources, not the correctness of them.
 
@@ -28,6 +28,8 @@ line count. These identify the reviewed sources, not the correctness of them.
 | `engine/lib/bridge.cjs` | Loopback/token boundary, body cap, dispatch and serialized requests |
 | `engine/switch2/process/client.cjs` | Request width, pending-worker state, recorded identity and reply PID checks |
 | `engine/switch2/process/fs-execute.cjs` | Original-byte checks, challenge/readback verification, conditional restoration and evidence retention |
+| `engine/switch2/ro/runtime.cjs` | Current-session identity, activation ordering, saved pending steps and idle-session handoff checks |
+| `engine/switch2/ro/probe.cjs` | Random challenge, kernel/reply PID matching, monotonic ticks, worker timeout and handle cleanup |
 
 The C payload's fixed output is 24 64-bit words. Its largest declared reply is
 184 bytes; with the response's 48-byte prefix this occupies 232 bytes of the
@@ -46,7 +48,7 @@ It neither calls a console nor
 executes the resulting native instructions. Transport methods are replaced by
 throwing stubs or deterministic in-memory responses for the interface checks.
 
-The report contains 15 separately accounted checks:
+The report contains 16 separately accounted checks:
 
 1. Synthetic ELF packaging and independent segment validation.
 2. Rejection of truncated ELF headers.
@@ -63,9 +65,10 @@ The report contains 15 separately accounted checks:
 12. Function authorization only after matching mapping and instruction bytes.
 13. Bounded transfer chunks and rejection of failed native return values.
 14. Transport closure even when the final shutdown write fails.
-15. Zig 0.15.2 assembly of the test fixture matching its shipped bytes.
+15. Execution-proof success and rejection of wrong kernel PID, nonce, tick and failed service lookup, using in-memory transport and evidence storage.
+16. Zig 0.15.2 assembly of the test fixture matching its shipped bytes.
 
-Local run: **15 pass, zero failures, zero skips/errors**. Four additional
+Local run: **16 pass, zero failures, zero skips/errors**. Four additional
 offline regression tests exercise the audit validator itself, including
 corrupt internal hashes despite a recomputed outer manifest, wrong/dirty source
 trees, and symlink rejection. The normal CI build gate repeats the pinned audit
@@ -119,6 +122,28 @@ records, observe secrets, or modify the target after a signature check. Source
 hashes and PID checks are useful evidence but not remote attestation.
 
 Status: **threat-model boundary**, not a new security guarantee.
+
+### NR-05 — Execution proof and cleanup are different evidence
+
+The probe marks its challenge evidence verified before closing the acquired
+service handle. Its catch path preserves the error but does not close that
+handle; it also avoids issuing more IPC to a timed-out worker. Therefore a
+failed identity/challenge check can leave an owned handle, and a saved
+`verified: true` does not by itself establish successful cleanup. The new
+host-only probe scenarios confirm that rejected replies are not verified and
+that those error paths do not issue a close request. They do not establish
+kernel ownership or the safety of attempting cleanup after a pending request.
+
+Activation similarly records pending steps before starting the replacement
+and terminating the original process. There is no automatic rollback if the
+second operation fails after the first succeeds. Handoff checks saved session
+pointers, receive handles, state and a joined worker, but they are observations
+at one point in time rather than a transaction or recovery guarantee. Neither
+activation nor handoff was executed during this review.
+
+Status: **source-backed lifecycle limitation, not a reproduced device fault**.
+Consumers must retain the full proof, error, pending and close fields rather
+than interpreting a single verification flag as successful restoration.
 
 ## Reproduce without a console
 

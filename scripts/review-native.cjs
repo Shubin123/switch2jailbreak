@@ -3,6 +3,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const vm = require('node:vm');
 const { execFileSync } = require('node:child_process');
 
 const sourceFiles = Object.freeze([
@@ -18,6 +19,8 @@ const sourceFiles = Object.freeze([
   'engine/switch2/process/test-function.S',
   'engine/switch2/process/client.cjs',
   'engine/switch2/process/fs-execute.cjs',
+  'engine/switch2/ro/runtime.cjs',
+  'engine/switch2/ro/probe.cjs',
 ]);
 const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 const reviewedRevision = '95f5525089273c5fce0b95047f3600f8442e96ae';
@@ -237,6 +240,58 @@ async function reviewNative(root, expectedRevision, zig = 'zig') {
     await assert.rejects(native.stop(), /injected write failure/);
     assert.equal(closed, true);
   });
+  await check('Execution proof rejects wrong identity, challenge, tick and lookup responses', async () => {
+    for (const fault of [null, 'pid', 'nonce', 'tick', 'lookup']) {
+      const commands = [], records = [];
+      let prepared, tick = 0n;
+      const memory = {
+        info: { session: 'host-fixture' }, reportFile: 'fixture-report',
+        async request(request) {
+          commands.push(request.command);
+          if (request.command === 'root-native-info') return { services: [{ name: 'pm:shell', sm: 7 }] };
+          if (request.command === 'root-native-worker-prepare') { prepared = request; return {}; }
+          if (request.command === 'root-native-worker-release') return {};
+          if (request.command === 'root-native-worker-state') return { finished: true };
+          if (request.command === 'root-native-close-handle') return { result: 0 };
+          assert.equal(request.command, 'root-native-worker-join');
+          if (prepared.kind === 'sm-get') return { responses: [{ transport: 0, result: fault === 'lookup' ? 1 : 0, handle: 9 }] };
+          assert.equal(prepared.kind, 'ro-probe');
+          const data = Buffer.alloc(48);
+          data.writeBigUInt64LE(0x4558454f5232534en);
+          data.writeBigUInt64LE(Buffer.from(prepared.hex, 'hex').readBigUInt64LE() ^
+            (fault === 'nonce' ? 0n : 0x9d7c3a51e6b2048fn), 8);
+          data.writeBigUInt64LE(42n, 16);
+          tick += fault === 'tick' ? 0n : 1n;
+          data.writeBigUInt64LE(tick, 32);
+          return { responses: [{ transport: 0, result: 0, kernelPid: fault === 'pid' ? '43' : '42', data: data.toString('hex') }] };
+        },
+      };
+      const exported = { exports: {} };
+      const imports = {
+        'node:fs/promises': { async writeFile(filename, contents) { records.push(JSON.parse(contents)); } },
+        'node:path': path, 'node:crypto': crypto,
+        '../tools/fs-memory.cjs': { async connect() { return memory; } },
+      };
+      const context = vm.createContext({
+        module: exported, __dirname: '/host-fixture', Buffer, setTimeout,
+        require(name) { assert.ok(Object.hasOwn(imports, name), `Unexpected probe import: ${name}`); return imports[name]; },
+      });
+      new vm.Script(fs.readFileSync(path.join(root, 'engine/switch2/ro/probe.cjs'), 'utf8')).runInContext(context);
+      const proof = exported.exports.main;
+      if (fault) {
+        await assert.rejects(proof('42'), /service lookup failed|expected kernel PID|payload response differs|tick did not advance/);
+        assert.equal(records.at(-1).verified, false);
+        assert.equal(typeof records.at(-1).error, 'string');
+        assert.equal(commands.includes('root-native-close-handle'), false);
+      } else {
+        const result = await proof('42');
+        assert.equal(result.verified, true);
+        assert.equal(result.challenges, 2);
+        assert.equal(records.at(-1).challenges.every(row => row.verified), true);
+        assert.equal(commands.at(-1), 'root-native-close-handle');
+      }
+    }
+  });
   await check('Assembly test fixture rebuild matches shipped bytes', () => {
     assert.equal(execFileSync(zig, ['version'], { encoding: 'utf8' }).trim(), '0.15.2');
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'native-assembly-'));
@@ -251,7 +306,7 @@ async function reviewNative(root, expectedRevision, zig = 'zig') {
     }
   });
 
-  assert.equal(results.length, 15, 'Native audit case coverage is incomplete');
+  assert.equal(results.length, 16, 'Native audit case coverage is incomplete');
   assert.deepEqual(inspectSource(root, expectedRevision), inspected, 'Upstream source changed during audit');
   const count = status => results.filter(result => result.status === status).length;
   return {
