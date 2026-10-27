@@ -97,13 +97,22 @@ jobs:
           export REQUIRE_REBUILD=1
           chmod +x scripts/verify-upstream.sh
           scripts/verify-upstream.sh
+          REVISION=$(jq -er '.targets[] | select(.id == "ns2jb-smilebasic") | .upstream.last_known_commit' config/targets.json)
+          git init -q "$RUNNER_TEMP/native-review-upstream"
+          git -C "$RUNNER_TEMP/native-review-upstream" fetch -q --depth=1 https://gitlab.com/pepsipu/ns2jb.git "$REVISION"
+          git -C "$RUNNER_TEMP/native-review-upstream" checkout -q --detach FETCH_HEAD
+          node scripts/review-native.cjs "$RUNNER_TEMP/native-review-upstream" results/native-review.json "$RUNNER_TEMP/zig-0.15.2/zig"
+          npm ci --ignore-scripts
+          node scripts/validate-results.cjs results/native-review.json
 
       - name: Upload build verification results
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: build-verify-results
-          path: results/build-verify-*.json
+          path: |
+            results/build-verify-*.json
+            results/native-review.json
           retention-days: 30
 
   release-check:

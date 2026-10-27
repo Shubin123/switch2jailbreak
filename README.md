@@ -70,6 +70,9 @@ npm run test:browser
 # Verify upstream build integrity (clones, tests, checksums)
 ./scripts/verify-upstream.sh
 
+# Host-only native boundary review against a clean pinned checkout
+node scripts/review-native.cjs /path/to/ns2jb results/native-review.json /path/to/zig-0.15.2/zig
+
 # Summarize all results
 ./scripts/summarize-results
 
@@ -94,6 +97,8 @@ and a full security review remain pending.
 Follow-up evidence: [verification review](docs/security-review.md) and
 [reproducible workspace release protocol](docs/release.md). Desktop Chromium,
 Firefox and WebKit controls now pass in Linux CI; this is not console validation.
+The [core native review](docs/native-review.md) adds 15 host-only audit checks
+and source-level findings without claiming the remaining chain has been audited.
 
 - [x] **Phase 1** — Baseline report and claims inventory (`docs/baseline.md`)
 - [x] **Phase 2** — Upstream and build verification (`docs/build-status.md`)

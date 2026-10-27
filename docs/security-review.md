@@ -73,3 +73,15 @@ A complete upstream native-code audit, console hardware validation, and release
 reproduction/publication are not established by these host results. See `security-boundaries.md` for
 what each observation can and cannot demonstrate. No privilege boundary is
 weakened to make a check pass.
+
+## Native review follow-up
+
+`native-review.md` now records a complete walkthrough of the core payload C,
+assembly, linker layout, builder and selected host interfaces (12 text files).
+The new host-only audit runs 15 boundary/container/assembly checks, preserves
+per-file source hashes, and is required by CI before source packaging. It does
+not execute a console payload. The report distinguishes kernel assumptions,
+an unconfirmed descriptor-cleanup concern, and conditional restoration from
+verified hardware results. Remaining native-chain coverage and console evidence
+keep Phase 4 open. Source/evidence prereleases are recorded separately in
+`release.md` and `phase-status.md`; the older snapshots above are historical.

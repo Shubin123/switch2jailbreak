@@ -10,7 +10,7 @@ Phase 4 is open.
 | Phase 1: research baseline | `docs/baseline.md`, research log, target configuration | Complete as a source-backed inventory, not independent hardware proof |
 | Phase 2: upstream/build verification | Pinned commit, 11 host tests, checksum policy, payload manifest, Zig 0.15.2 byte-for-byte rebuild; Linux and macOS results agree | Complete for host/build scope |
 | Phase 3: compatibility harness | 55 observations, applicability handling, validated JSON exports, three real desktop engines, missing/malformed-suite controls | Harness complete; target-console observations unavailable |
-| Phase 4: security/isolation review | `docs/security-review.md`, documented boundaries, negative fixtures, real CSP/COOP/COEP controls, selected upstream boundary paths | Partial; comprehensive upstream native review and independent console validation remain open |
+| Phase 4: security/isolation review | `docs/security-review.md`, `docs/native-review.md`, documented boundaries, negative fixtures, real CSP/COOP/COEP controls, core payload walkthrough and 15 host-only native checks | Partial; remaining native-chain paths and independent console validation remain open |
 | Phase 5: reproducible workspace release | Two local source packages match; independent Linux/macOS archives match; extracted archive regressions pass; tagged prerelease includes checksums and preserved CI evidence | Complete for workspace source/evidence publication; no jailbreak or hardware claim |
 
 ## Priority mapping
@@ -28,8 +28,10 @@ Phase 4 is open.
 
 ## Gates that cannot be inferred from green CI
 
-1. Complete the remaining upstream native-code review at the pinned revision,
-   recording coverage, findings, and unresolved assumptions.
+1. Complete the remaining upstream native-chain review at the pinned revision,
+   recording coverage, findings, and unresolved assumptions. The core C/assembly
+   payload and selected host interfaces now have a recorded walkthrough, exact
+   source hashes, and repeatable host-only boundary checks in `native-review.md`.
 2. Establish whether the intended console has a usable browser context without
    relying on an unverified WebKit exploit announcement.
 3. If a browser context is available and resource-heavy tests are appropriate,
