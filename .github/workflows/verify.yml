@@ -1,8 +1,10 @@
-name: Upstream Verification
+name: Upstream Verification & Tests
 
 on:
   schedule:
     - cron: '0 */6 * * *'
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -23,26 +25,60 @@ jobs:
           scripts/check-upstream.sh
 
       - name: Validate targets config
-        run: |
-          jq empty config/targets.json
-          echo "targets.json is valid JSON"
+        run: jq empty config/targets.json
 
       - name: Validate results schema
-        run: |
-          jq empty results/schema.json
-          echo "schema.json is valid JSON"
+        run: jq empty results/schema.json
 
-  summarize:
+  test-suite:
     runs-on: ubuntu-latest
-    needs: check-upstream
-    if: always()
+    strategy:
+      matrix:
+        node-version: [22, 24, 26]
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Run compatibility tests
+        run: |
+          chmod +x tests/run-all.sh
+          tests/run-all.sh
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-node${{ matrix.node-version }}
+          path: results/*.json
+          retention-days: 30
+
+  build-verify:
+    runs-on: ubuntu-latest
+    needs: check-upstream
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
 
       - name: Install jq
         run: sudo apt-get install -y jq
 
-      - name: Summarize any existing results
+      - name: Verify upstream
         run: |
-          chmod +x scripts/summarize-results
-          scripts/summarize-results || true
+          chmod +x scripts/verify-upstream.sh
+          scripts/verify-upstream.sh
+
+      - name: Upload build verification results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: build-verify-results
+          path: results/build-verify-*.json
+          retention-days: 30

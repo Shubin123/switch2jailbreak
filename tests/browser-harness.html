@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Switch 2 WebKit Compatibility Tests</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: monospace; background: #1a1a2e; color: #e0e0e0; padding: 16px; }
+  h1 { font-size: 16px; margin-bottom: 12px; color: #00d4ff; }
+  .suite { margin-bottom: 20px; }
+  .suite h2 { font-size: 14px; margin-bottom: 8px; color: #7b68ee; }
+  .summary { padding: 8px; background: #16213e; border-radius: 4px; margin-bottom: 8px; }
+  .result { padding: 4px 8px; font-size: 12px; border-left: 3px solid transparent; }
+  .result.pass { border-color: #00c853; }
+  .result.fail { border-color: #ff5252; }
+  .result.error { border-color: #ffd600; }
+  .pass .status { color: #00c853; }
+  .fail .status { color: #ff5252; }
+  .error .status { color: #ffd600; }
+  #export-btn { margin: 12px 0; padding: 8px 16px; background: #00d4ff; color: #1a1a2e;
+    border: none; border-radius: 4px; font-family: monospace; cursor: pointer; }
+  #export-btn:hover { background: #00b8d4; }
+  pre { background: #0f3460; padding: 12px; border-radius: 4px; overflow-x: auto;
+    font-size: 11px; max-height: 300px; overflow-y: auto; display: none; margin-top: 8px; }
+  .ua { font-size: 11px; color: #888; margin-bottom: 12px; word-break: break-all; }
+</style>
+</head>
+<body>
+<h1>Switch 2 WebKit Compatibility Tests</h1>
+<div class="ua" id="ua"></div>
+<div id="suites"></div>
+<button id="export-btn">Export JSON</button>
+<pre id="json-output"></pre>
+
+<script src="javascript-features/feature-detect.js"></script>
+<script src="runtime-errors/error-handling.js"></script>
+<script src="isolation/sandbox-detect.js"></script>
+<script>
+(function() {
+  document.getElementById('ua').textContent = navigator.userAgent;
+
+  const allResults = [
+    { name: 'JavaScript Features', data: window.__testResults },
+    { name: 'Runtime Errors', data: window.__errorResults },
+    { name: 'Isolation & Sandbox', data: window.__isolationResults },
+  ];
+
+  const container = document.getElementById('suites');
+
+  allResults.forEach(function(suite) {
+    if (!suite.data) return;
+    var div = document.createElement('div');
+    div.className = 'suite';
+
+    var s = suite.data.summary;
+    div.innerHTML = '<h2>' + suite.name + '</h2>' +
+      '<div class="summary">' + s.total + ' tests: ' +
+      s.passed + ' pass, ' + s.failed + ' fail, ' + s.errors + ' error</div>';
+
+    suite.data.results.forEach(function(r) {
+      var row = document.createElement('div');
+      row.className = 'result ' + r.status;
+      row.innerHTML = '<span class="status">[' + r.status.toUpperCase() + ']</span> ' +
+        r.test_id + ': ' + r.name;
+      div.appendChild(row);
+    });
+
+    container.appendChild(div);
+  });
+
+  var combined = {
+    schema_version: '1.0.0',
+    run_id: new Date().toISOString().replace(/[:.]/g, '-') + '-browser',
+    timestamp: new Date().toISOString(),
+    target_id: 'browser',
+    environment: {
+      browser_ua: navigator.userAgent,
+      os: navigator.platform,
+    },
+    suites: allResults.map(function(s) {
+      return { name: s.name, summary: s.data ? s.data.summary : null };
+    }),
+    results: allResults.reduce(function(acc, s) {
+      return s.data ? acc.concat(s.data.results) : acc;
+    }, []),
+  };
+
+  var total = allResults.reduce(function(a, s) { return a + (s.data ? s.data.summary.total : 0); }, 0);
+  var passed = allResults.reduce(function(a, s) { return a + (s.data ? s.data.summary.passed : 0); }, 0);
+  var failed = allResults.reduce(function(a, s) { return a + (s.data ? s.data.summary.failed : 0); }, 0);
+  var errors = allResults.reduce(function(a, s) { return a + (s.data ? s.data.summary.errors : 0); }, 0);
+  combined.summary = { total: total, passed: passed, failed: failed, skipped: 0, errors: errors };
+
+  var jsonStr = JSON.stringify(combined, null, 2);
+
+  document.getElementById('export-btn').addEventListener('click', function() {
+    var pre = document.getElementById('json-output');
+    if (pre.style.display === 'block') {
+      pre.style.display = 'none';
+      this.textContent = 'Export JSON';
+    } else {
+      pre.textContent = jsonStr;
+      pre.style.display = 'block';
+      this.textContent = 'Hide JSON';
+    }
+  });
+})();
+</script>
+</body>
+</html>

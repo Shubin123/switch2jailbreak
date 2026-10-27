@@ -1,6 +1,10 @@
 # Local state from upstream checker
 .upstream-state.json
 
+# Test results (regenerated; only schema is tracked)
+results/*.json
+!results/schema.json
+
 # OS files
 .DS_Store
 

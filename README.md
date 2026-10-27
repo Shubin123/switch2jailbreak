@@ -3,37 +3,44 @@
 Personal workspace for tracking and preparing for the ns2jb exploit on
 Nintendo Switch 2, firmware **23.0.1**.
 
-## Current status (2026-10-26)
+## Current status (2026-10-27)
 
 - **Upstream**: [gitlab.com/pepsipu/ns2jb](https://gitlab.com/pepsipu/ns2jb)
-  — commit `95f5525` (Oct 22, 2026). Requires SmileBASIC 4.4.9.
-- **WebKit route**: announced but **not publicly released**. The author's
-  blog describes a browser-based approach as future work; community posts
-  report a working port seeking testers. No downloadable source confirmed.
-- **SmileBASIC 4.4.9**: delisted from the eShop. Not currently obtainable
-  through official channels.
+  — commit `95f5525` (Oct 22, 2026). 11/11 tests pass. Zero npm dependencies.
+- **WebKit route**: announced but **not publicly released**. No downloadable
+  source confirmed.
+- **SmileBASIC 4.4.9**: delisted from the eShop.
 
 ## Project structure
 
 ```
 switch2jailbreak/
 ├── docs/
-│   ├── baseline.md           ← Phase 1 claims inventory and classification
+│   ├── baseline.md           ← Phase 1 claims inventory (18 classified)
+│   ├── build-status.md       ← Phase 2 dependency matrix and build report
+│   ├── compatibility.md      ← Phase 3 test results and interpretation guide
 │   ├── firmware-notes.md     ← Firmware preservation guide
 │   ├── research-log.md       ← Chronological verified findings
 │   └── environment-setup.md  ← macOS prereqs and network setup
 ├── config/
 │   └── targets.json          ← Target versions, upstream URLs, entry points
 ├── tests/
-│   └── javascript-features/
-│       └── feature-detect.js ← JS engine capability tests (Node + browser)
+│   ├── run-all.sh            ← Run all test suites, output JSON results
+│   ├── browser-harness.html  ← Run all tests in a browser, export JSON
+│   ├── javascript-features/
+│   │   └── feature-detect.js ← ES2020–2024 + WebAPI detection (20 tests)
+│   ├── runtime-errors/
+│   │   └── error-handling.js ← Error recovery and limits (15 tests)
+│   └── isolation/
+│       └── sandbox-detect.js ← Browser sandbox probing (20 tests)
 ├── results/
-│   ├── schema.json           ← JSON schema for test output
-│   └── local-baseline-*.json ← Baseline results from local Node.js
+│   ├── schema.json           ← JSON schema for all test output
+│   └── *.json                ← Timestamped result files
 ├── scripts/
-│   ├── check-upstream.sh     ← Verify upstream repo, Gist, and reference URLs
-│   ├── monitor-upstream.sh   ← Periodic upstream watch (cron or manual)
-│   ├── summarize-results     ← Aggregate test result JSON files
+│   ├── check-upstream.sh     ← Verify repo, Gist, URLs with change tracking
+│   ├── verify-upstream.sh    ← Clone, test, checksum, and audit upstream
+│   ├── monitor-upstream.sh   ← Periodic upstream watch
+│   ├── summarize-results     ← Aggregate all result JSON files
 │   └── check-env.sh          ← Verify macOS prerequisites
 └── .github/
     └── workflows/
@@ -49,21 +56,23 @@ switch2jailbreak/
 # Check upstream for changes (tracks state between runs)
 ./scripts/check-upstream.sh
 
-# Run JS feature-detection tests (local baseline)
-node tests/javascript-features/feature-detect.js > results/local-baseline.json
+# Run the full compatibility test suite (55 tests)
+./tests/run-all.sh
 
-# Summarize all test results
+# Verify upstream build integrity (clones, tests, checksums)
+./scripts/verify-upstream.sh
+
+# Summarize all results
 ./scripts/summarize-results
 
-# Watch for new commits (runs every 30 min by default)
-./scripts/monitor-upstream.sh
+# In a browser: open tests/browser-harness.html
 ```
 
 ## Phase progress
 
 - [x] **Phase 1** — Baseline report and claims inventory (`docs/baseline.md`)
-- [ ] **Phase 2** — Upstream and build verification
-- [ ] **Phase 3** — Compatibility test harness (started: `tests/javascript-features/`)
+- [x] **Phase 2** — Upstream and build verification (`docs/build-status.md`)
+- [x] **Phase 3** — Compatibility test harness (`tests/`, `docs/compatibility.md`)
 - [ ] **Phase 4** — Security and isolation review
 - [ ] **Phase 5** — Reproducible release and publication
 
