@@ -18,7 +18,7 @@ const tests = [
         (function recurse() { recurse(); })();
         return false;
       } catch (e) {
-        return e instanceof RangeError;
+        return e instanceof RangeError || (e instanceof Error && e.name === "InternalError");
       }
     },
   },

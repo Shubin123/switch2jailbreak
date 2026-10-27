@@ -43,6 +43,12 @@ folder`; it did not execute the tests. Firefox remains a required Linux CI gate,
 not a silently skipped or passing local test. Do not weaken OS privacy settings
 or use an existing personal browser profile to bypass this launch failure.
 
+The recursion-recovery observation accepts `RangeError` and Firefox's
+`InternalError`; rejecting the latter was a harness portability bug, not a
+failed Firefox recovery. The real-browser gate requires all 35 language/runtime
+checks to pass in both profiles. Isolation observations can remain negative
+when an API or policy is absent in the measured context.
+
 The runtime suite deliberately catches recursion errors and allocates a 64 MiB
 buffer. Use a disposable desktop tab first; do not run on a console with unsaved
 work. JSON export currently displays text for manual capture, not an upload.
