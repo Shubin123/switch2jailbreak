@@ -70,6 +70,12 @@ switch2jailbreak/
 
 ## Phase progress
 
+Priority follow-up: [P0 upstream recheck](docs/upstream-recheck.md),
+[P1 browser baseline](docs/browser-capabilities.md), P2 regression check
+(`node --test tests/browser-loading.test.cjs`), and
+[P3 security boundaries](docs/security-boundaries.md). Target-browser validation
+and a full security review remain pending.
+
 - [x] **Phase 1** — Baseline report and claims inventory (`docs/baseline.md`)
 - [x] **Phase 2** — Upstream and build verification (`docs/build-status.md`)
 - [x] **Phase 3** — Compatibility test harness (`tests/`, `docs/compatibility.md`)
