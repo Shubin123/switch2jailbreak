@@ -27,6 +27,12 @@ const sourceFiles = Object.freeze([
   'engine/switch2/ro/export-handle.cjs',
   'engine/switch2/ro/bind-sessions.cjs',
   'engine/switch2/ro/copy-loader-root.cjs',
+  'engine/shared/ipc.cjs',
+  'engine/switch2/memory/session.cjs',
+  'engine/switch2/memory/cache-mount.cjs',
+  'engine/switch2/memory/cache-mount-sdk.json',
+  'engine/switch2/retained/cache-shape.cjs',
+  'engine/switch2/retained/links.cjs',
 ]);
 const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 const reviewedRevision = '95f5525089273c5fce0b95047f3600f8442e96ae';
@@ -493,6 +499,96 @@ async function reviewNative(root, expectedRevision, zig = 'zig') {
       assert.equal(fixture.records.at(-1).restored, fault === null || fault === 'request');
     }
   });
+  const ipc = require(path.join(root, 'engine/shared/ipc.cjs'));
+  await check('Cache SDK declarations have bounded aligned instruction signatures', () => {
+    const sdk = JSON.parse(fs.readFileSync(path.join(root, 'engine/switch2/memory/cache-mount-sdk.json')));
+    assert.match(sdk.sha256, /^[0-9a-f]{64}$/);
+    for (const entry of Object.values(sdk.functions)) {
+      assert.ok(Number.isSafeInteger(entry.offset) && entry.offset >= 0 && entry.offset % 4 === 0);
+      assert.match(entry.bytes, /^(?:[0-9a-f]{8})+$/);
+      assert.equal(Buffer.from(entry.bytes, 'hex').length, entry.size);
+      assert.equal(typeof entry.symbol, 'string');
+    }
+  });
+  await check('CMIF rejects invalid descriptors and oversized packet inputs', () => {
+    for (const change of [{address: -1}, {address: 2 ** 39}, {size: -1},
+      {size: 2 ** 36}, {mode: 2}]) {
+      assert.throws(() => ipc.descriptor({address: 0x1000, size: 16, ...change}), /Invalid map-alias/);
+    }
+    for (const field of ['copies', 'send', 'receive']) {
+      assert.throws(() => ipc.packet(0, Buffer.alloc(0), {[field]: Array(16).fill(0)}), /Too many descriptors/);
+    }
+    assert.throws(() => ipc.packet(0, Buffer.alloc(241)), /capacity/);
+    assert.equal(ipc.packet(0, Buffer.alloc(224)).length, 256);
+  });
+  await check('CMIF rejects truncated and missing-magic replies', () => {
+    for (const length of [0, 4, 8, 16, 20, 256]) assert.throws(() => ipc.response(Buffer.alloc(length)));
+    const reply = Buffer.alloc(256);
+    reply.write('SFCO', 16);
+    assert.equal(ipc.response(reply).result, 0);
+    reply.writeUInt32LE(0x80000000, 4);
+    reply.writeUInt32LE(31 << 1, 8);
+    assert.throws(() => ipc.response(reply));
+  });
+  await check('Retained cache tail rejects possible live data', () => {
+    const {unusedTail} = require(path.join(root, 'engine/switch2/retained/cache-shape.cjs'));
+    assert.equal(unusedTail(Buffer.alloc(0x5a0)), true);
+    for (const length of [0, 0x59f, 0x5a1]) assert.equal(unusedTail(Buffer.alloc(length)), false);
+    const bytes = Buffer.alloc(0x5a0);
+    bytes.write('AA/AA', 0x30);
+    assert.equal(unusedTail(bytes), true);
+    for (const offset of [0x30, 0x35, 0x59f]) {
+      const changed = Buffer.from(bytes);
+      changed[offset] = 0xff;
+      assert.equal(unusedTail(changed), false);
+    }
+  });
+  await check('Retained links exclude unaligned, remote and out-of-width candidates', () => {
+    const {linksFrom} = require(path.join(root, 'engine/switch2/retained/links.cjs'));
+    const address = 0x100004000, bytes = Buffer.alloc(64);
+    for (const value of [0n, 0x100000000n, 1n << 39n, BigInt(address + 1), BigInt(address + 0x2000000)]) {
+      bytes.writeBigUInt64LE(value);
+      assert.equal(linksFrom(bytes, address, address).length, 0);
+    }
+    bytes.writeBigUInt64LE(BigInt(address));
+    assert.equal(linksFrom(bytes, address, address)[0].zeroTail, true);
+    bytes[8] = 1;
+    assert.equal(linksFrom(bytes, address, address)[0].zeroTail, false);
+  });
+  await check('Cache unmount rejects stale or busy mounts and records SDK failures', async () => {
+    for (const fault of ['missing', 'name', 'files', 'directories', 'sdk', null]) {
+      const calls = [], accessor = 0x2000, bytes = Buffer.alloc(128);
+      bytes.write(fault === 'name' ? 'old' : 'tmp', 24);
+      for (const offset of [0x30, 0x40]) {
+        bytes.writeBigUInt64LE(BigInt(accessor + offset), offset);
+        bytes.writeBigUInt64LE(BigInt(accessor + offset), offset + 8);
+      }
+      if (fault === 'files') bytes[0x30] ^= 1;
+      if (fault === 'directories') bytes[0x48] ^= 1;
+      const exported = {exports: {}};
+      const imports = {
+        'node:fs/promises': {async readFile() { return JSON.stringify({mounts: fault === 'missing' ? [] : [{name: 'tmp', accessor}]}); }},
+        'node:path': path,
+        'node:child_process': {execFile() { throw Error('Unexpected subprocess'); }},
+        'node:util': require('node:util'),
+        './cache-mount-sdk.json': {functions: {Unmount: {offset: 16}}},
+        './session.cjs': {check(ok, message) { if (!ok) throw Error(message); }},
+      };
+      const context = vm.createContext({module: exported, Buffer, process,
+        require(name) { assert.ok(Object.hasOwn(imports, name), `Unexpected cache import: ${name}`); return imports[name]; }});
+      new vm.Script(fs.readFileSync(path.join(root, 'engine/switch2/memory/cache-mount.cjs'), 'utf8')).runInContext(context);
+      const session = {base: 0x3000,
+        async read(location, length) { assert.equal(location, accessor); assert.equal(length, 128); return bytes; },
+        async write() { calls.push('write'); },
+        rpc: {async call3() { calls.push('sdk'); return fault === 'sdk' ? 1 : 0; }},
+        async record() { calls.push('record'); },
+      };
+      const run = () => exported.exports.unmount(session, {sdk: 0x4000}, '/fixture');
+      if (fault) await assert.rejects(run(), /missing|changed|open SDK|unmount failed/);
+      else await run();
+      assert.deepEqual(calls, ['sdk', null].includes(fault) ? ['write', 'sdk', 'record'] : []);
+    }
+  });
   await check('Assembly test fixture rebuild matches shipped bytes', () => {
     assert.equal(execFileSync(zig, ['version'], { encoding: 'utf8' }).trim(), '0.15.2');
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'native-assembly-'));
@@ -507,7 +603,7 @@ async function reviewNative(root, expectedRevision, zig = 'zig') {
     }
   });
 
-  assert.equal(results.length, 23, 'Native audit case coverage is incomplete');
+  assert.equal(results.length, 29, 'Native audit case coverage is incomplete');
   assert.deepEqual(inspectSource(root, expectedRevision), inspected, 'Upstream source changed during audit');
   const count = status => results.filter(result => result.status === status).length;
   return {
