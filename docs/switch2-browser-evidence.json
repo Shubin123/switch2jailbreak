@@ -1,0 +1,74 @@
+{
+  "captured": "2026-10-27T21:10:28.484Z",
+  "context": "captive-portal-applet",
+  "entry": "http://192.168.1.181:8080/ via LAN debug bridge from GitHub Pages redirect",
+  "firmware": "23.0.1",
+  "browser": {
+    "userAgent": "Mozilla/5.0 (Nintendo Switch; WifiWebAuthApplet) AppleWebKit/613.0 (KHTML, like Gecko) NF/7.0.3.12.11 NintendoBrowser/5.2.0.55481",
+    "engine": "WebKit 613.0",
+    "applet": "WifiWebAuthApplet",
+    "nintendoBrowser": "5.2.0.55481",
+    "networkFilter": "NF/7.0.3.12.11"
+  },
+  "display": {
+    "screen": "1920x1080",
+    "devicePixelRatio": 1,
+    "maxTouchPoints": 0
+  },
+  "hardware": {
+    "cores": 4,
+    "deviceMemory": null
+  },
+  "jsEngine": {
+    "bigInt": true,
+    "proxy": true,
+    "weakRef": true,
+    "finalizationRegistry": true,
+    "structuredClone": true,
+    "asyncAwait": true,
+    "generators": true,
+    "webAssembly": false,
+    "sharedArrayBuffer": false,
+    "atomics": false,
+    "arrayBufferTransfer": false
+  },
+  "webAPIs": {
+    "fetch": true,
+    "xhr": true,
+    "workers": true,
+    "blob": true,
+    "indexedDB": true,
+    "localStorage": true,
+    "cryptoGetRandomValues": true,
+    "webGL": false,
+    "webGL2": false,
+    "webGPU": false,
+    "serviceWorker": false,
+    "caches": false,
+    "notification": false
+  },
+  "timing": {
+    "performanceNow": "clamped to 1ms",
+    "jitWarmup": "50ms"
+  },
+  "evalResults": [
+    {"cmd": "navigator.userAgent", "result": "Mozilla/5.0 (Nintendo Switch; WifiWebAuthApplet) AppleWebKit/613.0 (KHTML, like Gecko) NF/7.0.3.12.11 NintendoBrowser/5.2.0.55481"},
+    {"cmd": "document.location.href", "result": "http://192.168.1.181:8080/"},
+    {"cmd": "typeof ArrayBuffer.transfer / structuredClone / WeakRef", "result": "undefined / function / function"},
+    {"cmd": "new WebAssembly.Module(...)", "result": "Can't find variable: WebAssembly"},
+    {"cmd": "crypto.getRandomValues(new Uint8Array(4))", "result": "169,193,115,93"},
+    {"cmd": "async / generator / importScripts", "result": "function / function / undefined"},
+    {"cmd": "webgl context", "result": "no webgl"},
+    {"cmd": "navigator.hardwareConcurrency", "result": "4"},
+    {"cmd": "navigator.deviceMemory", "result": "undefined"},
+    {"cmd": "performance.now() x3", "result": "44043 / 44043 / 44043"},
+    {"cmd": "new Blob(['test']).size", "result": "4"},
+    {"cmd": "ServiceWorker / caches / Notification", "result": "undefined / undefined / undefined"}
+  ],
+  "phase4_gate_assessment": {
+    "target_browser_access": "CLOSED — browser loads pages, executes JavaScript, communicates over LAN",
+    "hardware_execution": "OPEN — no WebAssembly, no SharedArrayBuffer, no raw sockets; upstream payload cannot execute in this browser",
+    "device_recovery": "OPEN — requires execution to test recovery from",
+    "independent_validation": "OPEN — requires all prior gates"
+  }
+}

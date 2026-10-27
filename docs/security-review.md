@@ -124,6 +124,21 @@ Phase 4 completion. Chromium and WebKit desktop controls verify export, download
 CSP fetch blocking and a no-JavaScript fallback. The local Firefox launch failure
 remains explicit; no new Linux CI success or target-browser result is claimed.
 
-All 95 tracked upstream files now have recorded walkthrough entries. Independent
-console evidence keeps Phase 4 open.
+All 95 tracked upstream files now have recorded walkthrough entries.
+
+## Console browser evidence (2026-10-27)
+
+Target browser access was established on a physical Switch 2 (firmware 23.0.1)
+via the LAN debug bridge. The captive portal applet (WifiWebAuthApplet, WebKit
+613.0, NintendoBrowser 5.2.0.55481) loaded the debug page over HTTP from the
+host Mac and executed remote eval commands.
+
+This closes the **target browser access** gate. The remaining three gates
+(hardware execution, device recovery, independent validation) remain open because
+the browser lacks WebAssembly, SharedArrayBuffer, Atomics, and WebGL — the
+upstream payload cannot execute in this environment. Full capability data:
+`docs/switch2-browser-evidence.json`.
+
+Phase 4 remains open. The browser route is confirmed reachable but insufficient
+for the upstream exploit chain without SmileBASIC 4.4.9 or a WebKit vulnerability.
 Source/evidence prereleases are recorded separately in `release.md` and `phase-status.md`.
