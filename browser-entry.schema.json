@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "report_type", "timestamp", "observation_kind", "firmware_or_os", "entry_context", "notes", "environment", "properties", "limitations"],
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "report_type": { "const": "browser-entry-evidence" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "observation_kind": { "enum": ["unverified", "desktop-control", "target-self-report"] },
+    "firmware_or_os": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "\\S" },
+    "entry_context": { "type": "string", "minLength": 1, "maxLength": 2000, "pattern": "\\S" },
+    "notes": { "type": "string", "maxLength": 2000 },
+    "environment": {
+      "type": "object", "additionalProperties": false,
+      "required": ["browser_ua", "platform", "page_protocol", "secure_context", "cross_origin_isolated"],
+      "properties": {
+        "browser_ua": { "type": "string", "maxLength": 2048 },
+        "platform": { "type": "string", "maxLength": 256 },
+        "page_protocol": { "enum": ["https:", "http:", "file:"] },
+        "secure_context": { "type": "boolean" },
+        "cross_origin_isolated": { "type": "boolean" }
+      }
+    },
+    "properties": {
+      "anyOf": [
+        { "type": "null" },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["webassembly", "worker", "shared_array_buffer", "bigint", "blob", "object_url"],
+          "properties": {
+            "webassembly": { "type": "boolean" }, "worker": { "type": "boolean" },
+            "shared_array_buffer": { "type": "boolean" }, "bigint": { "type": "boolean" },
+            "blob": { "type": "boolean" }, "object_url": { "type": "boolean" }
+          }
+        }
+      ]
+    },
+    "limitations": {
+      "type": "object", "additionalProperties": false,
+      "required": ["identity_attested", "native_execution_established", "recovery_verified", "phase_4_complete"],
+      "properties": {
+        "identity_attested": { "const": false }, "native_execution_established": { "const": false },
+        "recovery_verified": { "const": false }, "phase_4_complete": { "const": false }
+      }
+    }
+  }
+}

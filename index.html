@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Switch 2 research workspace: host verification evidence, open hardware validation gates, and Phase 4 status.">
+  <title>Switch 2 research · Verification status</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="wrap">
+    <nav aria-label="Main navigation"><a class="brand" href="#">NS2JB / RESEARCH</a><a href="https://github.com/Shubin123/switch2jailbreak">Repository ↗</a></nav>
+    <p class="eyebrow">Evidence over assumptions · Snapshot October 27, 2026</p>
+    <h1>Host checks pass.<br>Hardware proof is pending.</h1>
+    <p class="intro">A research and verification workspace for Nintendo Switch 2, targeting firmware 23.0.1. This site reports evidence boundaries—not a working console jailbreak.</p>
+    <p class="badge">Phase 4 remains open</p>
+    <p><a href="browser-entry.html">Assumed SwitchBru browser entry · no SmileBASIC →</a></p>
+    <p><a href="hardware-testing.html">Separate SmileBASIC payload package and prerequisites →</a></p>
+  </header>
+  <main class="wrap">
+    <section aria-labelledby="gates">
+      <div class="section-heading"><p class="eyebrow">01 / Outstanding evidence</p><h2 id="gates">Green CI is not console attestation.</h2></div>
+      <div class="cards">
+        <article><span class="number">01</span><h3>No target browser access</h3><p>Desktop Chromium, WebKit, and Firefox controls pass. No public WebKit entry point or real Switch 2 browser telemetry has been established. Desktop results do not establish target compatibility.</p></article>
+        <article><span class="number">02</span><h3>No hardware execution attestation</h3><p>Host-side parser, descriptor, and syscall mock checks verify interface contracts. They do not prove console exploit execution or hardware compatibility.</p></article>
+        <article><span class="number">03</span><h3>Device recovery remains unproven</h3><p>Recovery from aborts, network disconnections, or incomplete payload mappings has not been exercised on a physical console.</p></article>
+        <article><span class="number">04</span><h3>Native file-level coverage complete</h3><p>All 95 tracked upstream files have a documented walkthrough with 98 host-only checks across 9,128 lines and 15 documented findings. All 11 engine JSON assets have separate structural checks. File-level coverage is complete; path/branch-level coverage of every conditional and unresolved assumptions still require independent verification.</p></article>
+      </div>
+    </section>
+    <section aria-labelledby="phases">
+      <div class="section-heading"><p class="eyebrow">02 / Progress by scope</p><h2 id="phases">What the workspace establishes</h2></div>
+      <div class="table-scroll"><table>
+        <caption>Phase status snapshot; completion is limited to the scope shown.</caption>
+        <thead><tr><th scope="col">Phase</th><th scope="col">Status</th><th scope="col">Evidence boundary</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">1 · Research baseline</th><td>Complete</td><td>Source-backed inventory, not independent hardware proof.</td></tr>
+          <tr><th scope="row">2 · Build verification</th><td>Complete</td><td>Host tests, checksums, and reproducible builds.</td></tr>
+          <tr><th scope="row">3 · Compatibility harness</th><td>Harness complete</td><td>55 observations and three desktop engines; no target-console observations.</td></tr>
+          <tr class="open"><th scope="row">4 · Security / isolation</th><td>Open · partial</td><td>Remaining native review, independent execution validation, and physical recovery evidence are missing.</td></tr>
+          <tr><th scope="row">5 · Source prerelease</th><td>Complete</td><td>Reproducible workspace source and evidence publication; no jailbreak claim.</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+    <section class="safety" aria-labelledby="safety"><p class="eyebrow">03 / Safety boundary</p><h2 id="safety">An unchecked box is not a reason to risk a device.</h2><p>Do not update firmware, alter network security settings, open an unauthenticated host listener, or execute a console payload to close a validation gate. These actions are not part of automated host validation.</p><p>This static page runs no console probes, browser harness, or payload code.</p></section>
+    <section aria-labelledby="sources"><div class="section-heading"><p class="eyebrow">04 / Source of truth</p><h2 id="sources">Read the evidence, including its limits.</h2></div><ul class="links">
+      <li><a href="https://github.com/Shubin123/switch2jailbreak/blob/main/docs/phase-status.md">Phase completion audit ↗</a></li>
+      <li><a href="https://github.com/Shubin123/switch2jailbreak/blob/main/README.md">Workspace README ↗</a></li>
+      <li><a href="https://github.com/Shubin123/switch2jailbreak/blob/main/docs/native-review.md">Native review scope ↗</a></li>
+      <li><a href="https://github.com/Shubin123/switch2jailbreak/blob/main/docs/browser-capabilities.md">Desktop browser evidence ↗</a></li>
+    </ul><p>Repository links require repository access where applicable. This page is a dated summary, not live telemetry; consult the phase audit for subsequent changes.</p></section>
+  </main>
+  <footer class="wrap">Independent research workspace. Not affiliated with Nintendo. Publication does not close Phase 4.</footer>
+</body>
+</html>
