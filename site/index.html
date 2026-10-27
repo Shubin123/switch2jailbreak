@@ -165,7 +165,7 @@
 
       <div id="setupBox" class="setup-box">
         <p><strong>Step 1:</strong> On your Mac, run: <code>node scripts/debug-server.cjs</code></p>
-        <p style="margin-top:10px"><strong>Step 2:</strong> Enter your Mac's IP address (shown by the server):</p>
+        <p style="margin-top:10px"><strong>Step 2:</strong> Enter your Mac's IP (shown by the server) and tap Connect — this will navigate you to the debug server on your LAN:</p>
         <div class="setup-row" style="margin-top:8px">
           <input id="hostInput" type="text" placeholder="192.168.1.x" autocomplete="off" autocorrect="off" spellcheck="false">
           <button id="connectBtn" type="button">Connect</button>
@@ -241,6 +241,10 @@
     if (host.indexOf(':') === -1) host += ':8080';
     if (host.indexOf('http') !== 0) host = 'http://' + host;
     try { localStorage.setItem('debug-host', hostInput.value.trim()); } catch(e) {}
+    if (location.protocol === 'https:') {
+      window.location.href = host;
+      return;
+    }
     connectTo(host);
   });
 
