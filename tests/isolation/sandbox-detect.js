@@ -209,6 +209,13 @@ const tests = [
 ];
 
 function runTests() {
+  const browserOnlyTests = new Set([
+    "iso-003", "iso-004", "iso-005", "iso-006", "iso-007", "iso-008",
+    "iso-010", "iso-011", "iso-012", "iso-013", "iso-014", "iso-015",
+    "iso-016", "iso-017",
+  ]);
+  const nodeBaseline = typeof process !== "undefined" && !!process.version &&
+    typeof window === "undefined";
   const env = {};
   if (typeof process !== "undefined" && process.version) {
     env.os = process.platform;
@@ -221,6 +228,18 @@ function runTests() {
 
   const results = tests.map((t) => {
     const start = Date.now();
+    if (nodeBaseline && browserOnlyTests.has(t.test_id)) {
+      return {
+        test_id: t.test_id,
+        category: t.category,
+        name: t.name,
+        status: "skip",
+        expected: "browser context",
+        actual: "not run",
+        notes: "Browser-only observation is not applicable to the Node.js baseline.",
+        duration_ms: Date.now() - start,
+      };
+    }
     let status, actual, error_message;
     try {
       const passed = t.run();

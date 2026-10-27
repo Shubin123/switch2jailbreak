@@ -14,6 +14,12 @@ echo "======================================"
 TOTAL_PASS=0
 TOTAL_FAIL=0
 TOTAL_ERR=0
+TOTAL_SKIP=0
+
+if ! command -v jq >/dev/null 2>&1; then
+  echo "Error: jq is required to validate and summarize test results." >&2
+  exit 1
+fi
 
 run_suite() {
   local name="$1" script="$2" output_suffix="$3"
@@ -27,22 +33,19 @@ run_suite() {
     return 1
   fi
 
-  if ! command -v jq >/dev/null 2>&1; then
-    echo "  Results written to $output_file"
-    return 0
-  fi
-
-  local total passed failed errors
+  local total passed failed errors skipped
   total=$(jq '.summary.total' "$output_file")
   passed=$(jq '.summary.passed' "$output_file")
   failed=$(jq '.summary.failed' "$output_file")
   errors=$(jq '.summary.errors' "$output_file")
+  skipped=$(jq '.summary.skipped' "$output_file")
 
   TOTAL_PASS=$((TOTAL_PASS + passed))
   TOTAL_FAIL=$((TOTAL_FAIL + failed))
   TOTAL_ERR=$((TOTAL_ERR + errors))
+  TOTAL_SKIP=$((TOTAL_SKIP + skipped))
 
-  echo "  $total tests: $passed pass, $failed fail, $errors error"
+  echo "  $total tests: $passed pass, $failed fail, $skipped skip, $errors error"
 
   if [ "$failed" -gt 0 ] || [ "$errors" -gt 0 ]; then
     jq -r '.results[] | select(.status == "fail" or .status == "error") | "  [\(.status | ascii_upcase)] \(.test_id): \(.name)"' "$output_file"
@@ -65,7 +68,7 @@ run_suite "Isolation & Sandbox Detection" \
   "$SCRIPT_DIR/isolation/sandbox-detect.js" \
   "isolation"
 
-GRAND_TOTAL=$((TOTAL_PASS + TOTAL_FAIL + TOTAL_ERR))
+GRAND_TOTAL=$((TOTAL_PASS + TOTAL_FAIL + TOTAL_SKIP + TOTAL_ERR))
 
 echo ""
 echo "======================================"
@@ -73,15 +76,16 @@ echo " Grand Total: $GRAND_TOTAL tests"
 echo "   Passed:  $TOTAL_PASS"
 echo "   Failed:  $TOTAL_FAIL"
 echo "   Errors:  $TOTAL_ERR"
+echo "   Skipped: $TOTAL_SKIP"
 echo "======================================"
 echo ""
 echo " All results in: $RESULTS_DIR/"
 echo " Summarize with: scripts/summarize-results"
 echo ""
-echo " NOTE: Isolation tests report browser-only APIs as 'fail' in Node.js."
+echo " NOTE: Browser-only isolation checks are skipped in Node.js."
 echo "       Run in a browser context for meaningful sandbox results."
 echo "======================================"
 
-if [ "$TOTAL_ERR" -gt 0 ]; then
+if [ "$TOTAL_ERR" -gt 0 ] || [ "$TOTAL_FAIL" -gt 0 ]; then
   exit 1
 fi

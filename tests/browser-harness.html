@@ -62,7 +62,7 @@
     var s = suite.data.summary;
     div.innerHTML = '<h2>' + suite.name + '</h2>' +
       '<div class="summary">' + s.total + ' tests: ' +
-      s.passed + ' pass, ' + s.failed + ' fail, ' + s.errors + ' error</div>';
+      s.passed + ' pass, ' + s.failed + ' fail, ' + s.skipped + ' skip, ' + s.errors + ' error</div>';
 
     suite.data.results.forEach(function(r) {
       var row = document.createElement('div');
@@ -100,7 +100,8 @@
   var passed = allResults.reduce(function(a, s) { return a + (s.data ? s.data.summary.passed : 0); }, 0);
   var failed = allResults.reduce(function(a, s) { return a + (s.data ? s.data.summary.failed : 0); }, 0);
   var errors = allResults.reduce(function(a, s) { return a + (s.data ? s.data.summary.errors : 0); }, 0);
-  combined.summary = { total: total, passed: passed, failed: failed, skipped: 0, errors: errors };
+  var skipped = allResults.reduce(function(a, s) { return a + (s.data ? s.data.summary.skipped : 0); }, 0);
+  combined.summary = { total: total, passed: passed, failed: failed, skipped: skipped, errors: errors };
 
   var jsonStr = JSON.stringify(combined, null, 2);
 

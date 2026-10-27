@@ -57,35 +57,36 @@ Tests error recovery, memory allocation limits, and dynamic code execution.
 
 ### 3. Isolation & Sandbox Detection (20 tests)
 
-Detects browser sandbox features. Many will fail in Node.js (expected — they
-are browser-only APIs). Meaningful results require running in the target
+Detects browser sandbox features. Browser-only checks are skipped in Node.js
+instead of being reported as failures. Meaningful results require the target
 browser environment.
 
 | ID | Test | Node.js v26 | Browser (pending) |
 |----|------|:-----------:|:-----------------:|
 | iso-001 | WebAssembly available | PASS | — |
 | iso-002 | WebAssembly.compile | PASS | — |
-| iso-003 | Service Worker API | FAIL* | — |
-| iso-004 | Web Worker API | FAIL* | — |
-| iso-005 | localStorage | FAIL* | — |
-| iso-006 | IndexedDB | FAIL* | — |
-| iso-007 | document.cookie | FAIL* | — |
-| iso-008 | XMLHttpRequest | FAIL* | — |
+| iso-003 | Service Worker API | SKIP | — |
+| iso-004 | Web Worker API | SKIP | — |
+| iso-005 | localStorage | SKIP | — |
+| iso-006 | IndexedDB | SKIP | — |
+| iso-007 | document.cookie | SKIP | — |
+| iso-008 | XMLHttpRequest | SKIP | — |
 | iso-009 | WebSocket API | PASS | — |
-| iso-010 | Geolocation API | FAIL* | — |
-| iso-011 | Notification API | FAIL* | — |
-| iso-012 | Clipboard API | FAIL* | — |
-| iso-013 | Cross-origin isolation | FAIL* | — |
-| iso-014 | Permissions API | FAIL* | — |
-| iso-015 | CSP meta detectable | FAIL* | — |
-| iso-016 | window.open | FAIL* | — |
-| iso-017 | history.pushState | FAIL* | — |
+| iso-010 | Geolocation API | SKIP | — |
+| iso-011 | Notification API | SKIP | — |
+| iso-012 | Clipboard API | SKIP | — |
+| iso-013 | Cross-origin isolation | SKIP | — |
+| iso-014 | Permissions API | SKIP | — |
+| iso-015 | CSP meta detectable | SKIP | — |
+| iso-016 | window.open | SKIP | — |
+| iso-017 | history.pushState | SKIP | — |
 | iso-018 | Blob URL creation | PASS | — |
 | iso-019 | Performance.now | PASS | — |
 | iso-020 | ArrayBuffer transfer | PASS | — |
 
-*FAIL in Node.js is expected — these are browser-only APIs. Browser column
-will be populated when tests are run on the target console's browser.
+Node.js v26 baseline: 41 pass, 14 skip, zero fail, zero errors across all suites.
+Skipped checks are not executed and do not establish browser compatibility.
+The browser column remains pending. In browsers, absent APIs still report fail.
 
 ## How to run
 
@@ -106,7 +107,9 @@ node tests/isolation/sandbox-detect.js
 
 - **Node.js baseline**: establishes that the test code itself is correct.
   All JS feature and runtime tests should pass. Isolation tests targeting
-  browser APIs will fail (this is expected and documented).
+  browser APIs are skipped. Real failures or errors make the runner exit nonzero;
+  `jq` is required for result accounting. Older hosts may lack shared APIs and
+  legitimately report failures; those are not silently skipped.
 
 - **Browser results**: the useful data. When run on the Switch 2 browser,
   differences from the Node.js baseline reveal what the WebKit build
