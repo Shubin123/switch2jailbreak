@@ -45,8 +45,11 @@ for (const engine of ['chromium', 'firefox', 'webkit']) {
             assert.equal(output.complete, true);
             assert.equal(output.summary.errors, 0);
             assert.equal(output.summary.skipped, 0);
-            const runtimeFailures = output.results.filter(result => result.category !== 'isolation' && result.status !== 'pass');
+            const runtimeFailures = output.results.filter(result => result.category !== 'isolation' &&
+              result.test_id !== 'rt-err-009' && result.status !== 'pass');
             assert.deepEqual(runtimeFailures, []);
+            assert.equal(output.results.find(result => result.test_id === 'rt-err-009').status,
+              profile === 'isolated' ? 'pass' : 'fail');
             assert.equal(output.environment.secure_context, true);
             assert.equal(output.environment.cross_origin_isolated, profile === 'isolated');
             assert.equal(output.results.find(result => result.test_id === 'iso-013').status,

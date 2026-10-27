@@ -45,8 +45,10 @@ or use an existing personal browser profile to bypass this launch failure.
 
 The recursion-recovery observation accepts `RangeError` and Firefox's
 `InternalError`; rejecting the latter was a harness portability bug, not a
-failed Firefox recovery. The real-browser gate requires all 35 language/runtime
-checks to pass in both profiles. Isolation observations can remain negative
+failed Firefox recovery. The real-browser gate requires all 34 context-independent
+language/runtime checks to pass in both profiles. The remaining SharedArrayBuffer
+check must agree with the profile: available with COOP/COEP, unavailable without.
+Isolation observations can remain negative
 when an API or policy is absent in the measured context.
 
 The runtime suite deliberately catches recursion errors and allocates a 64 MiB
