@@ -163,21 +163,13 @@
     <div id="debug" class="panel">
       <p class="debug-intro">LAN debug bridge — probe the Switch 2 captive portal browser. Not an exploit or native payload loader.</p>
 
-      <div id="setupManual" class="setup-box">
-        <p><strong>One command on your Mac:</strong></p>
-        <div class="steps">
-          <code>sudo node scripts/debug-server.cjs</code>
-        </div>
-        <p style="margin-top:12px;color:var(--dim)">Then on the Switch 2: Settings → Internet → your network → DNS → Manual → set to your Mac's IP. Save and connect. The browser opens automatically.</p>
-        <p style="margin-top:8px;color:var(--dim);font-size:.85rem">Or connect manually from this page:</p>
-        <div class="setup-row">
+      <div id="setupBox" class="setup-box">
+        <p><strong>Step 1:</strong> On your Mac, run: <code>node scripts/debug-server.cjs</code></p>
+        <p style="margin-top:10px"><strong>Step 2:</strong> Enter your Mac's IP address (shown by the server):</p>
+        <div class="setup-row" style="margin-top:8px">
           <input id="hostInput" type="text" placeholder="192.168.1.x" autocomplete="off" autocorrect="off" spellcheck="false">
           <button id="connectBtn" type="button">Connect</button>
         </div>
-      </div>
-
-      <div id="setupAuto" class="setup-box" style="display:none">
-        <p style="color:var(--ok)">Connected to debug server — capabilities streaming.</p>
       </div>
 
       <div id="connStatus" class="conn-status idle">Not connected</div>
@@ -218,22 +210,24 @@
   var connStatus = document.getElementById('connStatus');
   var capsBox = document.getElementById('debug-caps');
   var logBox = document.getElementById('debug-log');
-  var setupManual = document.getElementById('setupManual');
-  var setupAuto = document.getElementById('setupAuto');
+  var setupBox = document.getElementById('setupBox');
   var pollTimer = null;
   var baseUrl = '';
   var startTime = Date.now();
   var seenCmd = 0;
 
+  function connectTo(url) {
+    baseUrl = url;
+    setupBox.innerHTML = '<p style="color:var(--ok)">Connected to <strong>' + url + '</strong></p>';
+    beginPolling();
+  }
+
   if (window.__DEBUG_HOST__) {
-    baseUrl = window.__DEBUG_HOST__;
-    setupManual.style.display = 'none';
-    setupAuto.style.display = '';
     tabs.forEach(function(t) { t.classList.remove('active'); });
     panels.forEach(function(p) { p.classList.remove('active'); });
     document.querySelector('[data-panel="debug"]').classList.add('active');
     document.getElementById('debug').classList.add('active');
-    setTimeout(function() { beginPolling(); }, 100);
+    setTimeout(function() { connectTo(window.__DEBUG_HOST__); }, 100);
   } else {
     try {
       var saved = localStorage.getItem('debug-host');
@@ -244,10 +238,10 @@
   connectBtn.addEventListener('click', function() {
     var host = hostInput.value.trim();
     if (!host) return;
+    if (host.indexOf(':') === -1) host += ':8080';
     if (host.indexOf('http') !== 0) host = 'http://' + host;
-    baseUrl = host;
     try { localStorage.setItem('debug-host', hostInput.value.trim()); } catch(e) {}
-    beginPolling();
+    connectTo(host);
   });
 
   hostInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') connectBtn.click(); });
