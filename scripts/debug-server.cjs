@@ -216,6 +216,17 @@ const httpServer = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === 'POST' && req.url === '/api/eval') {
+    try {
+      const body = JSON.parse(await readBody(req));
+      if (!body.code) { jsonResp(res, 400, { error: 'missing code' }); return; }
+      commands.push({ id: ++cmdId, type: 'eval', code: body.code });
+      console.log(`[eval] queued: ${body.code.substring(0, 80)}`);
+      jsonResp(res, 200, { ok: true, cmdId });
+    } catch (e) { jsonResp(res, 400, { error: e.message }); }
+    return;
+  }
+
   // Log interesting requests (skip polls)
   const host = req.headers.host || '';
   if (host.includes('nintendo') || host.includes('conntest')) {
