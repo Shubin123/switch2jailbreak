@@ -13,6 +13,18 @@ async function exportReport(page) {
   return JSON.parse(await page.locator('#json-output').textContent());
 }
 
+function sourceProvenance() {
+  try {
+    const options = { encoding: 'utf8', cwd: path.join(__dirname, '../..'), stdio: ['ignore', 'pipe', 'pipe'] };
+    return {
+      source_revision: execFileSync('git', ['rev-parse', 'HEAD'], options).trim(),
+      working_tree_dirty: !!execFileSync('git', ['status', '--porcelain'], options).trim(),
+    };
+  } catch {
+    return { source_revision: null, working_tree_dirty: null };
+  }
+}
+
 for (const engine of ['chromium', 'firefox', 'webkit']) {
   test(`${engine}: real browser evidence and negative controls`, { timeout: 120000 }, async suite => {
     const { server, requests, url } = await startServer();
@@ -37,17 +49,17 @@ for (const engine of ['chromium', 'firefox', 'webkit']) {
             assert.equal(output.environment.cross_origin_isolated, profile === 'isolated');
             assert.equal(output.results.find(result => result.test_id === 'iso-013').status,
               profile === 'isolated' ? 'pass' : 'fail');
-            const requestCount = requests.length;
+            const probePath = `/${profile}/result-integrity.js`;
+            const requestCount = requests.filter(request => request === probePath).length;
             const allowed = await page.evaluate(async () => {
               try { await fetch('result-integrity.js'); return true; }
               catch { return false; }
             });
             assert.equal(allowed, profile === 'normal');
-            assert.equal(requests.length > requestCount, profile === 'normal');
+            assert.equal(requests.filter(request => request === probePath).length > requestCount, profile === 'normal');
             output.provenance = {
               engine, browser_version: browser.version(), profile,
-              source_revision: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
-              working_tree_dirty: !!execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }).trim(),
+              ...sourceProvenance(),
               harness_sha256: Object.fromEntries([...files.keys()].map(filename => [filename,
                 crypto.createHash('sha256').update(fs.readFileSync(path.join(__dirname, '..', filename))).digest('hex')])),
             };

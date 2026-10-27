@@ -91,6 +91,10 @@ Priority follow-up: [P0 upstream recheck](docs/upstream-recheck.md),
 [P3 security boundaries](docs/security-boundaries.md). Target-browser validation
 and a full security review remain pending.
 
+Follow-up evidence: [verification review](docs/security-review.md) and
+[reproducible workspace release protocol](docs/release.md). Desktop Chromium,
+Firefox and WebKit controls now pass in Linux CI; this is not console validation.
+
 - [x] **Phase 1** — Baseline report and claims inventory (`docs/baseline.md`)
 - [x] **Phase 2** — Upstream and build verification (`docs/build-status.md`)
 - [x] **Phase 3** — Compatibility test harness (`tests/`, `docs/compatibility.md`)

@@ -16,3 +16,4 @@ results/*.json
 # Node (if tests use it later)
 node_modules/
 .tools/
+dist/

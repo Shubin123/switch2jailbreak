@@ -33,8 +33,43 @@ complete audit of upstream native exploit code or console security.
 
 ## Remaining gates
 
-Real browser captures and policy-enforcement checks, a complete upstream native
-code audit, console hardware validation, and release reproduction/publication
-are not established by these host results. See `security-boundaries.md` for
+### Desktop-browser follow-up
+
+GitHub Actions run `40471810087` passed the regression suites, the Node.js
+22/24/26 matrix, all three real desktop-browser suites, and the strict upstream
+rebuild gate for workspace revision `3ddd1f9b8e38ec6c35a1c8289c3bb5bc94332f4d`.
+Downloaded artifacts identify clean source trees. All six browser profiles
+contain 55 observations with zero execution errors or applicability skips.
+Negative observations are retained: Chromium/WebKit have three absent features
+in the normal profile and one in the isolated profile; Firefox has four and two.
+The CSP-meta observation remains false even when a response-header CSP is
+actively enforcing the tested network restriction.
+
+### Upstream boundary inspection
+
+Source inspection at the pinned upstream revision covered host entrypoint
+`run.cjs`, `engine/lib/connection.cjs`, `engine/lib/bridge.cjs`, the pipeline, and
+`engine/switch2/process/fs-execute.cjs`:
+
+- Pairing validates a fresh token, protocol, platform, and process layout. It
+  limits pending peers and enforces timeouts. The console link is TCP without
+  transport encryption; use only a trusted LAN. Pairing is not protection from
+  a malicious local process or a network observer able to see launch secrets.
+- The host bridge binds loopback, requires a per-run bearer token, restricts
+  method/path, caps request body size, and serializes native operations. The
+  token is a local trust boundary, not protection against a compromised host.
+- Run artifacts contain connection details and memory-related data. The host
+  entrypoint creates restrictive permissions and uses finally-block cleanup;
+  do not publish console run directories as browser capability evidence.
+- FS execution checks the intended process, code mapping and original bytes,
+  uses fresh challenge values, and attempts restoration in finally blocks.
+  Restoration depends on the connection and runtime still functioning; source
+  inspection cannot guarantee recovery after a device or transport failure.
+
+These observations describe checked source paths, not a complete native-code
+audit or a new exploit technique. No console operation was performed.
+
+A complete upstream native-code audit, console hardware validation, and release
+reproduction/publication are not established by these host results. See `security-boundaries.md` for
 what each observation can and cannot demonstrate. No privilege boundary is
 weakened to make a check pass.

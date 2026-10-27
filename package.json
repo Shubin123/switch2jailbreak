@@ -8,6 +8,7 @@
     "test": "node --test tests/*.test.cjs",
     "test:compatibility": "bash tests/run-all.sh",
     "test:browser": "node --test tests/browser/*.test.cjs",
+    "release:package": "node scripts/package-release.cjs",
     "validate:results": "node scripts/validate-results.cjs"
   },
   "devDependencies": {
