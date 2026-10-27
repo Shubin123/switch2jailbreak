@@ -7,8 +7,8 @@ Nintendo Switch 2, firmware **23.0.1**.
 
 - **Upstream**: [gitlab.com/pepsipu/ns2jb](https://gitlab.com/pepsipu/ns2jb)
   — commit `95f5525` (Oct 22, 2026). 11/11 tests pass. Zero npm dependencies.
-- **WebKit route**: announced but **not publicly released**. No downloadable
-  source confirmed.
+- **WebKit route**: no downloadable browser implementation verified in the
+  checked upstream sources. This is not proof that no private port exists.
 - **SmileBASIC 4.4.9**: delisted from the eShop.
 
 ## Project structure
@@ -99,7 +99,12 @@ Firefox and WebKit controls now pass in Linux CI; this is not console validation
 - [x] **Phase 2** — Upstream and build verification (`docs/build-status.md`)
 - [x] **Phase 3** — Compatibility test harness (`tests/`, `docs/compatibility.md`)
 - [ ] **Phase 4** — Security and isolation review
-- [ ] **Phase 5** — Reproducible release and publication
+- [x] **Phase 5** — Reproducible workspace source prerelease and evidence publication
+
+See `docs/phase-status.md` for the requirement-by-requirement audit. Phase 4
+remains open: host tooling and desktop controls are verified, but a full
+upstream native-code review and console validation are not complete. The
+source prerelease does not establish those missing results.
 
 ## References
 
