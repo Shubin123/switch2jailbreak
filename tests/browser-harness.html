@@ -29,6 +29,7 @@
 <body>
 <h1>Switch 2 WebKit Compatibility Tests</h1>
 <div class="ua" id="ua"></div>
+<p>Local capability observations only; not proof of exploitability or console compatibility.</p>
 <div id="suites"></div>
 <button id="export-btn">Export JSON</button>
 <pre id="json-output"></pre>
@@ -49,7 +50,12 @@
   const container = document.getElementById('suites');
 
   allResults.forEach(function(suite) {
-    if (!suite.data) return;
+    if (!suite.data) {
+      var missing = document.createElement('p');
+      missing.textContent = suite.name + ': suite failed to load; run is incomplete.';
+      container.appendChild(missing);
+      return;
+    }
     var div = document.createElement('div');
     div.className = 'suite';
 
@@ -74,9 +80,13 @@
     run_id: new Date().toISOString().replace(/[:.]/g, '-') + '-browser',
     timestamp: new Date().toISOString(),
     target_id: 'browser',
+    complete: allResults.every(function(suite) { return !!suite.data; }),
     environment: {
       browser_ua: navigator.userAgent,
       os: navigator.platform,
+      page_protocol: location.protocol,
+      secure_context: window.isSecureContext === true,
+      cross_origin_isolated: window.crossOriginIsolated === true,
     },
     suites: allResults.map(function(s) {
       return { name: s.name, summary: s.data ? s.data.summary : null };

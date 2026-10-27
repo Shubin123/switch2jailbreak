@@ -7,6 +7,7 @@
  * Usage (browser): load via <script>, read window.__errorResults
  */
 
+(function() {
 const tests = [
   {
     test_id: "rt-err-001",
@@ -271,3 +272,4 @@ if (typeof module !== "undefined" && module.exports) {
 } else if (typeof window !== "undefined") {
   window.__errorResults = runTests();
 }
+})();

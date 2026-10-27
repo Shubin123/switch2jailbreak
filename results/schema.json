@@ -23,7 +23,11 @@
     },
     "environment": {
       "type": "object",
-      "required": ["os", "node_version"],
+      "required": ["os"],
+      "anyOf": [
+        { "required": ["node_version"] },
+        { "required": ["browser_ua"] }
+      ],
       "properties": {
         "os": { "type": "string" },
         "os_version": { "type": "string" },

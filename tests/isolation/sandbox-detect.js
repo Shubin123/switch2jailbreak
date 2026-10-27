@@ -11,6 +11,7 @@
  * Usage (browser): load via <script>, read window.__isolationResults
  */
 
+(function() {
 const tests = [
   {
     test_id: "iso-001",
@@ -267,3 +268,4 @@ if (typeof module !== "undefined" && module.exports) {
 } else if (typeof window !== "undefined") {
   window.__isolationResults = runTests();
 }
+})();

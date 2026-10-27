@@ -7,6 +7,7 @@
  * Usage (browser):                load via <script>, read window.__testResults
  */
 
+(function() {
 const tests = [
   {
     test_id: "js-feat-001",
@@ -205,3 +206,4 @@ if (typeof module !== "undefined" && module.exports) {
 } else if (typeof window !== "undefined") {
   window.__testResults = runTests();
 }
+})();
