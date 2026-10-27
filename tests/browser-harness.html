@@ -34,6 +34,7 @@
 <button id="export-btn">Export JSON</button>
 <pre id="json-output"></pre>
 
+<script src="result-integrity.js"></script>
 <script src="javascript-features/feature-detect.js"></script>
 <script src="runtime-errors/error-handling.js"></script>
 <script src="isolation/sandbox-detect.js"></script>
@@ -42,17 +43,23 @@
   document.getElementById('ua').textContent = navigator.userAgent;
 
   const allResults = [
-    { name: 'JavaScript Features', data: window.__testResults },
-    { name: 'Runtime Errors', data: window.__errorResults },
-    { name: 'Isolation & Sandbox', data: window.__isolationResults },
+    { name: 'JavaScript Features', data: window.__testResults, expectedCount: 20 },
+    { name: 'Runtime Errors', data: window.__errorResults, expectedCount: 15 },
+    { name: 'Isolation & Sandbox', data: window.__isolationResults, expectedCount: 20 },
   ];
+
+  allResults.forEach(function(suite) {
+    if (typeof window.resultIntegrity !== 'function' || window.resultIntegrity(suite.data, suite.expectedCount).length) {
+      suite.data = null;
+    }
+  });
 
   const container = document.getElementById('suites');
 
   allResults.forEach(function(suite) {
     if (!suite.data) {
       var missing = document.createElement('p');
-      missing.textContent = suite.name + ': suite failed to load; run is incomplete.';
+      missing.textContent = suite.name + ': suite failed to load or validate; run is incomplete.';
       container.appendChild(missing);
       return;
     }
@@ -60,15 +67,19 @@
     div.className = 'suite';
 
     var s = suite.data.summary;
-    div.innerHTML = '<h2>' + suite.name + '</h2>' +
-      '<div class="summary">' + s.total + ' tests: ' +
-      s.passed + ' pass, ' + s.failed + ' fail, ' + s.skipped + ' skip, ' + s.errors + ' error</div>';
+    var heading = document.createElement('h2');
+    heading.textContent = suite.name;
+    div.appendChild(heading);
+    var summary = document.createElement('div');
+    summary.className = 'summary';
+    summary.textContent = s.total + ' tests: ' + s.passed + ' pass, ' + s.failed +
+      ' fail, ' + s.skipped + ' skip, ' + s.errors + ' error';
+    div.appendChild(summary);
 
     suite.data.results.forEach(function(r) {
       var row = document.createElement('div');
       row.className = 'result ' + r.status;
-      row.innerHTML = '<span class="status">[' + r.status.toUpperCase() + ']</span> ' +
-        r.test_id + ': ' + r.name;
+      row.textContent = '[' + r.status.toUpperCase() + '] ' + r.test_id + ': ' + r.name;
       div.appendChild(row);
     });
 

@@ -45,9 +45,11 @@ jobs:
 
       - name: Run compatibility tests
         run: |
-          node --test tests/*.test.cjs
+          npm ci --ignore-scripts
+          npm test
           chmod +x tests/run-all.sh
           tests/run-all.sh
+          node scripts/validate-results.cjs results/js-features-*.json results/runtime-errors-*.json results/isolation-*.json
 
       - name: Upload results
         uses: actions/upload-artifact@v4
@@ -55,6 +57,23 @@ jobs:
         with:
           name: test-results-node${{ matrix.node-version }}
           path: results/*.json
+          retention-days: 30
+
+  browser-suite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --ignore-scripts
+      - run: npx playwright install --with-deps chromium firefox webkit
+      - run: npm run test:browser
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: desktop-browser-evidence
+          path: results/browser-*.json
           retention-days: 30
 
   build-verify:

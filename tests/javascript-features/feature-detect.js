@@ -150,7 +150,7 @@ function runTests() {
     env.os = process.platform;
     env.node_version = process.version;
   }
-  if (typeof navigator !== "undefined") {
+  if (typeof window !== "undefined" && typeof navigator !== "undefined") {
     env.browser_ua = navigator.userAgent;
     env.os = navigator.platform;
   }
@@ -191,7 +191,7 @@ function runTests() {
     schema_version: "1.0.0",
     run_id: `${new Date().toISOString().replace(/[:.]/g, "-")}-feat`,
     timestamp: new Date().toISOString(),
-    target_id: "local-baseline",
+    target_id: typeof window === "undefined" ? "local-baseline" : "browser",
     environment: env,
     results,
     summary,

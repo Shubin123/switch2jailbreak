@@ -1,17 +1,19 @@
 {
-  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "Test Result",
   "description": "Machine-readable output from a compatibility or isolation test run",
   "type": "object",
-  "required": ["schema_version", "run_id", "timestamp", "target_id", "environment", "results"],
+  "required": ["schema_version", "run_id", "timestamp", "target_id", "environment", "results", "summary"],
   "properties": {
+    "complete": { "type": "boolean" },
     "schema_version": {
       "type": "string",
       "const": "1.0.0"
     },
     "run_id": {
       "type": "string",
-      "description": "Unique identifier for this test run (ISO timestamp + random suffix)"
+      "description": "Unique identifier for this test run (ISO timestamp + random suffix)",
+      "minLength": 1
     },
     "timestamp": {
       "type": "string",
@@ -19,7 +21,8 @@
     },
     "target_id": {
       "type": "string",
-      "description": "References a target id from config/targets.json"
+      "description": "Configured target or runtime context (local-baseline or browser)",
+      "minLength": 1
     },
     "environment": {
       "type": "object",
@@ -84,12 +87,13 @@
     },
     "summary": {
       "type": "object",
+      "required": ["total", "passed", "failed", "skipped", "errors"],
       "properties": {
-        "total": { "type": "integer" },
-        "passed": { "type": "integer" },
-        "failed": { "type": "integer" },
-        "skipped": { "type": "integer" },
-        "errors": { "type": "integer" }
+        "total": { "type": "integer", "minimum": 0 },
+        "passed": { "type": "integer", "minimum": 0 },
+        "failed": { "type": "integer", "minimum": 0 },
+        "skipped": { "type": "integer", "minimum": 0 },
+        "errors": { "type": "integer", "minimum": 0 }
       }
     }
   }

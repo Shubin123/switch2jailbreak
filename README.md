@@ -59,6 +59,14 @@ switch2jailbreak/
 # Run the full compatibility test suite (55 tests)
 ./tests/run-all.sh
 
+# Install pinned host verification dependencies and run regression tests
+npm ci --ignore-scripts
+npm test
+
+# Real desktop browser controls (not console emulation)
+npx playwright install chromium firefox webkit
+npm run test:browser
+
 # Verify upstream build integrity (clones, tests, checksums)
 ./scripts/verify-upstream.sh
 
@@ -67,6 +75,13 @@ switch2jailbreak/
 
 # In a browser: open tests/browser-harness.html
 ```
+
+The workspace now uses pinned development dependencies for browser automation
+and JSON Schema validation. The upstream package's zero-npm-dependency claim
+does not apply to these optional workspace development tools. Browser capability
+observations may legitimately report absent features; the browser regression
+suite verifies complete evidence, accurate counts, policy controls and failures
+being reported rather than hidden. See `docs/browser-capabilities.md`.
 
 ## Phase progress
 
