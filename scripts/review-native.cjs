@@ -33,6 +33,16 @@ const sourceFiles = Object.freeze([
   'engine/switch2/memory/cache-mount-sdk.json',
   'engine/switch2/retained/cache-shape.cjs',
   'engine/switch2/retained/links.cjs',
+  'engine/switch2/ro/control.cjs',
+  'engine/switch2/ro/worker-control.cjs',
+  'engine/switch2/ro/files.cjs',
+  'engine/switch2/ro/objects.cjs',
+  'engine/switch2/ro/prepare-event.cjs',
+  'engine/switch2/ro/prepare-workers.cjs',
+  'engine/switch2/ro/process-test.cjs',
+  'engine/switch2/ro/test-gate.cjs',
+  'engine/switch2/ro/test-sm.cjs',
+  'engine/switch2/ro/install-retained.cjs',
 ]);
 const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 const reviewedRevision = '95f5525089273c5fce0b95047f3600f8442e96ae';
@@ -589,6 +599,374 @@ async function reviewNative(root, expectedRevision, zig = 'zig') {
       assert.deepEqual(calls, ['sdk', null].includes(fault) ? ['write', 'sdk', 'record'] : []);
     }
   });
+  await check('Foreign worker cancellation and binding enforce thread count and identity', async () => {
+    const workerImports = {
+      '../../shared/ipc.cjs': ipc,
+      'node:path': path,
+      [path.join(root, 'engine/switch2/app/native-worker.cjs')]: {},
+      [path.join(root, 'engine/switch2/app/events.cjs')]: {},
+      [path.join(root, 'engine/switch2/app/worker.cjs')]: { SENTINEL: 0xdeadbeefn },
+    };
+    const exported = { exports: {} };
+    const context = vm.createContext({
+      module: exported, __dirname: path.join(root, 'engine/switch2/ro'), Buffer, process,
+      require(name) {
+        if (Object.hasOwn(workerImports, name)) return workerImports[name];
+        if (name.startsWith('node:')) return require(name);
+        throw new Error(`Unexpected import in worker-control: ${name}`);
+      }
+    });
+    new vm.Script(fs.readFileSync(path.join(root, 'engine/switch2/ro/worker-control.cjs'), 'utf8')).runInContext(context);
+    const workerControl = exported.exports;
+
+    const s = {
+      handles: new Set([10, 11, 12, 13, 14, 15, 16]),
+      rpc: { async batch(calls) { return calls.map(() => ({ result: 0 })); } },
+      async verifyCode(code) {
+        assert.equal(code.offset, 0x158414);
+        assert.equal(code.bytes, '210300d4c0035fd6');
+      }
+    };
+    const live = { sdk: 0x400000 };
+    const report = {
+      nativeRo: {
+        apiWorkers: [0, 1, 2, 3, 4, 5, 6].map(id => ({ handle: 10 + id, id }))
+      }
+    };
+    const ctx = { s, live, report, save: async () => {} };
+
+    const replies = await workerControl.cancelWorkers(ctx);
+    assert.equal(replies.length, 7);
+    assert.ok(replies.every(r => r.result === 0));
+
+    await assert.rejects(workerControl.cancelWorkers({ ...ctx, report: { nativeRo: { apiWorkers: report.nativeRo.apiWorkers.slice(0, 6) } } }), /API-worker copies are missing/);
+    await assert.rejects(workerControl.cancelWorkers({ ...ctx, s: { ...s, handles: new Set([10, 11, 12, 13, 14, 15]) } }), /API-worker copies are missing/);
+
+    const rejectingCancel = { ...ctx, s: { ...s, rpc: { async batch(calls) { return calls.map((c, i) => ({ result: i === 0 ? 1 : 0 })); } } } };
+    await assert.rejects(workerControl.dispatch(rejectingCancel, { command: 'root-native-worker-cancel' }, report.nativeRo), /Foreign thread cancellation was rejected/);
+
+    const state = {
+      events: [0, 1, 2, 3, 4, 5, 6].map(id => ({ handle: 10 + id })),
+      calls: [0, 1, 2, 3, 4, 5, 6].map(id => ({ operation: 'thread-id', handle: 10 + id, result: 0, value: String(id) }))
+    };
+    const bindReq = { command: 'root-native-worker-bind', workers: [0, 1, 2, 3, 4, 5, 6].map(id => ({ handle: 10 + id, id })) };
+    const bound = await workerControl.dispatch({ s, live, save: async () => {} }, bindReq, state);
+    assert.equal(bound.length, 7);
+
+    await assert.rejects(workerControl.dispatch({ s, live, save: async () => {} }, { command: 'root-native-worker-bind', workers: [0, 1, 2, 3, 4, 5, 0].map((id, i) => ({ handle: 10 + id, id: i })) }, state), /seven different native API-worker copies/);
+    await assert.rejects(workerControl.dispatch({ s, live, save: async () => {} }, bindReq, { ...state, calls: [] }), /Worker copies lack their native thread-ID checks/);
+  });
+  await check('Unreleased worker launch discard safely replaces mutating payload with read-only query', async () => {
+    const workerImports = {
+      '../../shared/ipc.cjs': ipc,
+      'node:path': path,
+      [path.join(root, 'engine/switch2/app/native-worker.cjs')]: {},
+      [path.join(root, 'engine/switch2/app/events.cjs')]: {},
+      [path.join(root, 'engine/switch2/app/worker.cjs')]: { SENTINEL: 0xdeadbeefn },
+    };
+    const exported = { exports: {} };
+    const context = vm.createContext({
+      module: exported, __dirname: path.join(root, 'engine/switch2/ro'), Buffer, process,
+      require(name) {
+        if (Object.hasOwn(workerImports, name)) return workerImports[name];
+        if (name.startsWith('node:')) return require(name);
+        throw new Error(`Unexpected import in worker-control: ${name}`);
+      }
+    });
+    new vm.Script(fs.readFileSync(path.join(root, 'engine/switch2/ro/worker-control.cjs'), 'utf8')).runInContext(context);
+    const workerControl = exported.exports;
+
+    const written = [];
+    const s = {
+      threads: new Set([99]),
+      async readOwned(addr, len) {
+        const buf = Buffer.alloc(len);
+        buf.writeUInt32LE(4, 0);
+        buf.write('SFCI', 16, 'ascii');
+        buf.writeUInt32LE(0, 24);
+        return buf;
+      },
+      async write(addr, data) { written.push({ addr, data }); }
+    };
+    const worker = {
+      thread: 99, joined: false, kind: 'pm-launch', launchTitle: '0x0400000000000037',
+      launchFlags: 0x10, released: false, area: 0x2100000
+    };
+    const state = { worker };
+    const ctx = { s, live: {}, save: async () => {} };
+
+    const res = await workerControl.dispatch(ctx, { command: 'root-native-worker-discard-unreleased-launch' }, state);
+    assert.equal(res.discarded, true);
+    assert.equal(written.length, 1);
+    assert.equal(written[0].addr, 0x2100000 + 0x1000);
+    assert.deepEqual(written[0].data, ipc.packet(6));
+    assert.ok(worker.discardedLaunch);
+
+    await assert.rejects(workerControl.dispatch(ctx, { command: 'root-native-worker-discard-unreleased-launch' }, { worker: { ...worker, released: true } }), /Only this unreleased helper launch may be discarded/);
+    await assert.rejects(workerControl.dispatch(ctx, { command: 'root-native-worker-discard-unreleased-launch' }, { worker: { ...worker, kind: 'sm-get' } }), /Only this unreleased helper launch may be discarded/);
+  });
+  await check('Locator domain conversion failure closes temporary handle and rolls back state', async () => {
+    const closed = [];
+    const s = {
+      async ready() { return true; },
+      handles: new Set([100]),
+      async close(h) { closed.push(h); }
+    };
+    const live = { session: 'test-session' };
+    const controlSha = hash(fs.readFileSync(path.join(root, 'engine/switch2/ro/control.cjs')));
+    const report = {
+      nativeRo: { session: 'test-session', notifiers: [100], events: [], calls: [], sources: [{ sha256: controlSha }] }
+    };
+
+    const domain = {
+      wire: { control: id => Buffer.from([id]) },
+      async send(s, label, handle, packet) {
+        if (label.includes('Clone')) return { moves: [200], copies: [], result: 0 };
+        if (label.includes('Convert')) throw new Error('Simulated domain conversion failure');
+      },
+      oneHandle(reply) { return reply.moves[0]; }
+    };
+
+    const imports = {
+      '../memory/session.cjs': { check(ok, msg) { if (!ok) throw new Error(msg); } },
+      [path.join(root, 'engine/switch2/app/domain.cjs')]: domain,
+      './files.cjs': {}, './worker-control.cjs': {}, './process-test.cjs': {}
+    };
+    const exported = { exports: {} };
+    const context = vm.createContext({
+      module: exported, __dirname: path.join(root, 'engine/switch2/ro'),
+      __filename: path.join(root, 'engine/switch2/ro/control.cjs'),
+      Buffer, process,
+      require(name) {
+        if (Object.hasOwn(imports, name)) return imports[name];
+        if (name.startsWith('node:')) return require(name);
+        throw new Error(`Unexpected import in control: ${name}`);
+      }
+    });
+    new vm.Script(fs.readFileSync(path.join(root, 'engine/switch2/ro/control.cjs'), 'utf8')).runInContext(context);
+    const controlMod = exported.exports;
+
+    await assert.rejects(
+      controlMod.dispatch({ s, live, report, save: async () => {} }, { command: 'root-native-locator-open', handle: 100 }),
+      /Simulated domain conversion failure/
+    );
+    assert.deepEqual(closed, [200]);
+    assert.equal(report.nativeRo.domainCopies.length, 0);
+
+    domain.send = async (s, label, handle, packet) => {
+      if (label.includes('Clone')) return { moves: [201], copies: [], result: 0 };
+      const buf = Buffer.alloc(4); buf.writeUInt32LE(0x42);
+      return { moves: [], copies: [], result: 0, data: buf };
+    };
+    const entry = await controlMod.dispatch({ s, live, report, save: async () => {} }, { command: 'root-native-locator-open', handle: 100 });
+    assert.equal(entry.handle, 201);
+    assert.equal(entry.root, 0x42);
+    assert.equal(report.nativeRo.domainCopies.length, 1);
+
+    const closeRes = await controlMod.dispatch({ s, live, report, save: async () => {} }, { command: 'root-native-close-handle', handle: 201 });
+    assert.equal(closeRes.closed, 201);
+    assert.equal(report.nativeRo.domainCopies.length, 0);
+    assert.deepEqual(closed, [200, 201]);
+
+    await assert.rejects(
+      controlMod.dispatch({ s, live, report, save: async () => {} }, { command: 'root-native-close-handle', handle: 999 }),
+      /Only exported or copied local handles may be closed here/
+    );
+  });
+  await check('CodeFS handle closure preserves primary bindings and active domain roots', async () => {
+    const closed = [];
+    const s = {
+      threads: new Set(),
+      handles: new Set([50, 51]),
+      async close(h) { closed.push(h); }
+    };
+    const state = {
+      codeFileSystems: [
+        { handle: 50, title: 'primary' },
+        { handle: 51, title: 'secondary' }
+      ]
+    };
+    const ctx = { s, live: {}, save: async () => {} };
+
+    const filesImports = {
+      '../../shared/ipc.cjs': ipc,
+      './payload/manifest.json': require(path.join(root, 'engine/switch2/ro/payload/manifest.json')),
+      '../app/filesystem.cjs': {}, '../app/mounted-save.cjs': {}
+    };
+    const exported = { exports: {} };
+    const context = vm.createContext({
+      module: exported, __dirname: path.join(root, 'engine/switch2/ro'), Buffer, process,
+      require(name) {
+        if (Object.hasOwn(filesImports, name)) return filesImports[name];
+        if (name.startsWith('node:')) return require(name);
+        throw new Error(`Unexpected import in files: ${name}`);
+      }
+    });
+    new vm.Script(fs.readFileSync(path.join(root, 'engine/switch2/ro/files.cjs'), 'utf8')).runInContext(context);
+    const filesMod = exported.exports;
+
+    await assert.rejects(filesMod.dispatch(ctx, { command: 'root-native-code-close', handle: 50 }, state),
+      /Close requires an idle analysis CodeFS; the retained binding is preserved/);
+
+    s.threads.add(1);
+    await assert.rejects(filesMod.dispatch(ctx, { command: 'root-native-code-close', handle: 51 }, state),
+      /Close requires an idle analysis CodeFS/);
+    s.threads.clear();
+
+    state.codeFileSystems[1].domainRoot = 0x10;
+    await assert.rejects(filesMod.dispatch(ctx, { command: 'root-native-code-close', handle: 51 }, state),
+      /Close requires an idle analysis CodeFS/);
+    delete state.codeFileSystems[1].domainRoot;
+
+    const res = await filesMod.dispatch(ctx, { command: 'root-native-code-close', handle: 51 }, state);
+    assert.equal(res.closed, true);
+    assert.deepEqual(closed, [51]);
+    assert.equal(state.codeFileSystems.length, 1);
+    assert.equal(state.closedCodeFileSystems.length, 1);
+  });
+  await check('Donor filesystem preparation validates policy manifest, chunked hashes and path encoding', async () => {
+    const filesImports = {
+      '../../shared/ipc.cjs': ipc,
+      './payload/manifest.json': require(path.join(root, 'engine/switch2/ro/payload/manifest.json')),
+      '../app/filesystem.cjs': {}, '../app/mounted-save.cjs': {}
+    };
+    const exported = { exports: {} };
+    const context = vm.createContext({
+      module: exported, __dirname: path.join(root, 'engine/switch2/ro'), Buffer, process,
+      require(name) {
+        if (Object.hasOwn(filesImports, name)) return filesImports[name];
+        if (name.startsWith('node:')) return require(name);
+        throw new Error(`Unexpected import in files: ${name}`);
+      }
+    });
+    new vm.Script(fs.readFileSync(path.join(root, 'engine/switch2/ro/files.cjs'), 'utf8')).runInContext(context);
+    const filesMod = exported.exports;
+
+    const pkt = filesMod.pathRequest(8, Buffer.alloc(4), 0x1234567890, 0x301);
+    assert.equal(pkt.readUInt32LE(0), 4 | (1 << 16));
+    assert.equal(pkt.readUInt32LE(12), 0x34567890);
+    assert.equal(pkt.readUInt32LE(8) >> 16, 0x301);
+
+    const s = { threads: new Set() };
+    const live = { platform: 2, session: 'mismatch-test' };
+    await assert.rejects(
+      filesMod.dispatch({ s, live, save: async () => {} }, { command: 'root-native-donor-prepare' }, {}),
+      /ENOENT|unsupported/
+    );
+  });
+  await check('Donor cleanup validates file hashes and guarantees cloned filesystem closure in finally', async () => {
+    const closed = [];
+    const s = {
+      base: 0x100000, bytes: 0x1000000,
+      threads: new Set(), pendingIpc: false,
+      async close(h) { closed.push(h); },
+      async write() {},
+      async readOwned(addr, size) { return Buffer.alloc(size); },
+      async ipc() { return { result: 0 }; }
+    };
+    const state = {
+      worker: { joined: true },
+      donor: {
+        ready: true,
+        files: [
+          { name: 'main', created: true, verified: true, size: 10, sha256: hash(Buffer.alloc(10)) }
+        ]
+      }
+    };
+    const filesystem = {
+      async openFile(s, handle, name) { return { result: 0, handle: 80 }; },
+      async fileSize(s, handle) { return 10n; },
+      async readFile(s, handle, offset, size) { return Buffer.alloc(size); },
+      async pathMethod(s, handle, cmd, name) { return { canonicalResult: 0x202 }; }
+    };
+    const domain = { async send() { return { result: 0 }; } };
+    const mountedSave = { async cloneMountedFilesystem() { return 70; } };
+
+    const filesImports = {
+      '../../shared/ipc.cjs': ipc,
+      './payload/manifest.json': require(path.join(root, 'engine/switch2/ro/payload/manifest.json')),
+      '../app/filesystem.cjs': filesystem,
+      '../app/mounted-save.cjs': mountedSave
+    };
+    const exported = { exports: {} };
+    const context = vm.createContext({
+      module: exported, __dirname: path.join(root, 'engine/switch2/ro'), Buffer, process,
+      require(name) {
+        if (Object.hasOwn(filesImports, name)) return filesImports[name];
+        if (name.startsWith('node:')) return require(name);
+        throw new Error(`Unexpected import in files: ${name}`);
+      }
+    });
+    new vm.Script(fs.readFileSync(path.join(root, 'engine/switch2/ro/files.cjs'), 'utf8')).runInContext(context);
+    const filesMod = exported.exports;
+
+    const res = await filesMod.dispatch({ s, live: {}, save: async () => {} }, { command: 'root-native-donor-cleanup' }, state, domain);
+    assert.equal(res.cleanedUp, true);
+    assert.deepEqual(closed, [80, 70]);
+
+    state.worker.joined = false;
+    state.donor.cleanedUp = false;
+    await assert.rejects(
+      filesMod.dispatch({ s, live: {}, save: async () => {} }, { command: 'root-native-donor-cleanup' }, state, domain),
+      /Donor cleanup requires the completed launch and an idle worker/
+    );
+  });
+  await check('Process test execution requires RX permissions and verifies unmapping on cleanup', async () => {
+    const mem = new Map();
+    const s = {
+      base: 0x1000000, bytes: 0x3000000,
+      threads: new Set(), rpc: {},
+      async write(addr, data) { mem.set(addr, Buffer.from(data)); },
+      async readOwned(addr, size) { return mem.get(addr)?.subarray(0, size) || Buffer.alloc(size); },
+      async read(addr, size) {
+        const page = Buffer.alloc(size);
+        fs.readFileSync(path.join(root, 'engine/switch2/process/test-function.bin')).copy(page);
+        return page;
+      }
+    };
+    const live = { session: 'proc-test' };
+    const state = {};
+    const ctx = { s, live, save: async () => {} };
+
+    const testBin = fs.readFileSync(path.join(root, 'engine/switch2/process/test-function.bin'));
+    const pageBuf = Buffer.alloc(0x1000); testBin.copy(pageBuf);
+    const pageHash = hash(pageBuf);
+
+    const processTestMod = require(path.join(root, 'engine/switch2/ro/process-test.cjs'));
+
+    s.rpc.query = async () => ({ result: 0, type: 5, permissions: 3, attributes: 0 });
+    const prep = await processTestMod.dispatch(ctx, { command: 'root-native-process-test-prepare' }, state);
+    assert.equal(prep.pageSha256, pageHash);
+
+    s.rpc.query = async addr => ({ result: 0, type: 5, permissions: 3, attributes: 0, address: addr, size: 0x1000 });
+    await assert.rejects(
+      processTestMod.dispatch(ctx, { command: 'root-native-process-test-execute', destination: 0x4000000, nonce: 42 }, state),
+      /RO did not provide a readable executable alias/
+    );
+
+    let verifiedFunc = false;
+    s.rpc.query = async addr => ({ result: 0, type: 5, permissions: 5, attributes: 0, address: addr, size: 0x1000 });
+    s.rpc.verifyFunction = async () => { verifiedFunc = true; };
+    s.rpc.call4 = async () => 0;
+    await processTestMod.dispatch(ctx, { command: 'root-native-process-test-execute', destination: 0x4000000, nonce: 42 }, state);
+    assert.equal(verifiedFunc, true);
+
+    s.rpc.query = async addr => {
+      if (addr === state.processTest.source) return { result: 0, type: 5, permissions: 3, attributes: 0 };
+      return { result: 0, type: 1, permissions: 5 };
+    };
+    await assert.rejects(
+      processTestMod.dispatch(ctx, { command: 'root-native-process-test-cleanup', destination: 0x4000000 }, state),
+      /The executable alias remains mapped/
+    );
+
+    s.rpc.query = async addr => {
+      if (addr === state.processTest.source) return { result: 0, type: 5, permissions: 3, attributes: 0 };
+      return { result: 0, type: 0, permissions: 0 };
+    };
+    const cleanRes = await processTestMod.dispatch(ctx, { command: 'root-native-process-test-cleanup', destination: 0x4000000 }, state);
+    assert.equal(cleanRes.finished, true);
+  });
   await check('Assembly test fixture rebuild matches shipped bytes', () => {
     assert.equal(execFileSync(zig, ['version'], { encoding: 'utf8' }).trim(), '0.15.2');
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'native-assembly-'));
@@ -603,7 +981,7 @@ async function reviewNative(root, expectedRevision, zig = 'zig') {
     }
   });
 
-  assert.equal(results.length, 29, 'Native audit case coverage is incomplete');
+  assert.equal(results.length, 36, 'Native audit case coverage is incomplete');
   assert.deepEqual(inspectSource(root, expectedRevision), inspected, 'Upstream source changed during audit');
   const count = status => results.filter(result => result.status === status).length;
   return {

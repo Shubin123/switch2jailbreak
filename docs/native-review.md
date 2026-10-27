@@ -10,7 +10,7 @@ proof of console compatibility, or independent hardware reproduction.
 
 ## Coverage and source identity
 
-The walkthrough covered these 26 complete text files (2,128 lines including
+The walkthrough covered these 36 complete text files (3,244 lines including
 comments and manifest data). The audit report records each file's SHA256 and
 line count. These identify the reviewed sources, not the correctness of them.
 
@@ -42,6 +42,16 @@ line count. These identify the reviewed sources, not the correctness of them.
 | `engine/switch2/memory/cache-mount-sdk.json` | Declared offsets and instruction lengths, not independently authenticated SDK provenance |
 | `engine/switch2/retained/cache-shape.cjs` | Exact cache-array length and conservative unused-tail recognition |
 | `engine/switch2/retained/links.cjs` | Page-aligned candidate filtering, width/proximity bounds and zero-tail observations |
+| `engine/switch2/ro/control.cjs` | Command dispatch, locator domain conversion, exported/copied handle closure and syscall verification |
+| `engine/switch2/ro/worker-control.cjs` | Seven-worker synchronization cancellation, worker binding validation, unreleased PM launch discard and join parsing |
+| `engine/switch2/ro/files.cjs` | Path request descriptors, donor file preparation with chunked verification, CodeFS lifecycle and donor cleanup handle closure |
+| `engine/switch2/ro/objects.cjs` | Locator domain resolution, owner/manager vtable verification, root/notifier clone challenge bounds and cleanup |
+| `engine/switch2/ro/prepare-event.cjs` | Notifier proof binding, writable event handle export, and signal/clear qualification sequence |
+| `engine/switch2/ro/prepare-workers.cjs` | Thread ring inspection, unique worker group selection, thread-ID export qualification and foreign cancellation |
+| `engine/switch2/ro/process-test.cjs` | Single-page RW heap preparation, RX alias permission/hash enforcement, and unmapping cleanup |
+| `engine/switch2/ro/test-gate.cjs` | Grouped session parking, single-step execution, and restoration execution in finally |
+| `engine/switch2/ro/test-sm.cjs` | Candidate SM handle qualification, service lookup error handling, and program identity query |
+| `engine/switch2/ro/install-retained.cjs` | Heap capture verification, cache array/owner matching, bootstrap probe retry and promotion |
 
 The C payload's fixed output is 24 64-bit words. Its largest declared reply is
 184 bytes; with the response's 48-byte prefix this occupies 232 bytes of the
@@ -60,8 +70,8 @@ It neither calls a console nor
 executes the resulting native instructions. Transport methods are replaced by
 throwing stubs or deterministic in-memory responses for the interface checks.
 
-The report contains 29 separately accounted checks (the original 23 plus six
-cache/protocol checks described below):
+The report contains 36 separately accounted checks (the original 23, six
+cache/protocol checks, plus seven RO orchestration and cleanup checks):
 
 1. Synthetic ELF packaging and independent segment validation.
 2. Rejection of truncated ELF headers.
@@ -86,9 +96,22 @@ cache/protocol checks described below):
 20. Handle-range rejection before file reads or writes, with explicit current-process pseudo-handle acceptance.
 21. Rejection of stale notifier session/report/identity or changed backend before writes.
 22. Mocked export success, request failure, first-write failure and restoration failure with exact write ordering and evidence flags.
-23. Zig 0.15.2 assembly of the test fixture matching its shipped bytes.
+23. Cache SDK declarations have bounded aligned instruction signatures.
+24. CMIF descriptor bounds, mode restrictions and packet capacity caps.
+25. Rejection of truncated and missing-magic CMIF replies.
+26. Retained cache tail validation and conservative unused space checks.
+27. Filtering of page-aligned 39-bit retained memory link candidates.
+28. Mocked cache unmount preflight verification and failure recording.
+29. Foreign worker cancellation and binding enforcement of thread count and verified identity.
+30. Unreleased worker launch discard safely replacing mutating payload with read-only query.
+31. Locator domain conversion failure guarantees temporary handle closure and state rollback.
+32. CodeFS handle closure preserves primary bindings and active domain roots.
+33. Donor filesystem preparation validates policy manifest, chunked hashes and path encoding.
+34. Donor cleanup validates file hashes and guarantees cloned filesystem closure in finally.
+35. Process test execution requires RX permissions and verifies unmapping on cleanup.
+36. Zig 0.15.2 assembly of the test fixture matching its shipped bytes.
 
-Local run: **23 pass, zero failures, zero skips/errors**. Four additional
+Local run: **36 pass, zero failures, zero skips/errors**. Four additional
 offline regression tests exercise the audit validator itself, including
 corrupt internal hashes despite a recomputed outer manifest, wrong/dirty source
 trees, and symlink rejection. The normal CI build gate repeats the pinned audit
@@ -290,7 +313,39 @@ The six added checks cover SDK declarations, descriptor/packet rejection,
 reply rejection, tail recognition, link filtering and mocked cache unmount.
 They neither execute generated instructions nor establish protocol ABI validity.
 
-Local validation on October 27, 2026: 29/29 native audit checks and 28/28 host
+### NR-13 — Foreign worker cancellation and launch discard contain mutation windows
+
+Worker cancellation exercises `CancelSynchronization` across seven worker handles
+in batch. While the host requires exactly seven unique handles and pre-recorded
+thread-ID confirmations before issuing the batch, the foreign cancellation syscall
+cannot ensure target threads have transitioned to an idle state before subsequent
+commands proceed. A nonzero cancellation result is rejected by the dispatcher.
+
+Similarly, the launch discard helper safely overwrites a prepared, unreleased
+helper launch with a read-only application-PID query (`packet(6)`). If the launch
+was already released (`worker.released === true`) or has unexpected flags, discard
+is rejected and the helper cannot recall the mutating IPC.
+
+Status: **host-reproduced guard checks, with timing/concurrency limitations on target**.
+Foreign thread cancellation and launch overwrites depend on target kernel scheduling.
+
+### NR-14 — Temporary locator and donor filesystem lifecycles enforce local cleanup but lack transactional rollback
+
+`locator-open` wraps domain conversion in a `try/catch` block that explicitly
+closes the temporary clone handle and purges it from `state.domainCopies` on error.
+Likewise, `donor-cleanup` guarantees the closure of the cloned temporary filesystem
+handle in a `finally` block even if file deletion fails, and `code-close` prevents
+closing the primary binding or an active domain root.
+
+However, if a donor file write fails partway through its 64KB chunks during
+`donor-prepare`, the temporary storage file remains written on disk until application
+restart. Local cleanup of handles and state does not guarantee that mutated persistent
+storage on the target is rolled back transactionally.
+
+Status: **host-verified local cleanup guarantees; device storage rollback remains conditional**.
+Retain all proof logs and error records rather than assuming transactional rollback.
+
+Local validation on October 27, 2026: 36/36 native audit checks and 28/28 host
 regression tests pass; compatibility exports validate. Desktop browser controls
 pass for Chromium and WebKit, but Firefox fails at process launch with
 `Could not find profile folder` (12/13 browser subtests pass). This is recorded
