@@ -24,6 +24,9 @@ const sourceFiles = Object.freeze([
   'engine/switch2/ro/layout.cjs',
   'engine/switch2/ro/gate.cjs',
   'engine/switch2/ro/launch.cjs',
+  'engine/switch2/ro/export-handle.cjs',
+  'engine/switch2/ro/bind-sessions.cjs',
+  'engine/switch2/ro/copy-loader-root.cjs',
 ]);
 const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 const reviewedRevision = '95f5525089273c5fce0b95047f3600f8442e96ae';
@@ -415,6 +418,81 @@ async function reviewNative(root, expectedRevision, zig = 'zig') {
     assert.equal(fixture.gate.parked, false);
     assert.equal(fixture.gate.restoration, undefined);
   });
+  const exportFixture = (fault = null) => {
+    const writes = [], requests = [], records = [];
+    let reads = 0;
+    const notifier = { session: 'host-fixture', report: 'fixture-report', identityVerified: true,
+      E: 0x1000, B: 0x2000, handle: 7, handleField: 0x3000 };
+    if (fault === 'session') notifier.session = 'old-session';
+    if (fault === 'report') notifier.report = 'old-report';
+    if (fault === 'identity') notifier.identityVerified = false;
+    const memory = {
+      info: { session: 'host-fixture' }, reportFile: 'fixture-report',
+      async pointer(address) { assert.equal(address, notifier.E + 8); return fault === 'backend' ? 0 : notifier.B; },
+      async write(...args) {
+        writes.push(args);
+        if (fault === 'first-write' || (fault === 'restore' && writes.length === 2)) throw Error('injected write failure');
+      },
+      async request(request) {
+        requests.push(request);
+        assert.equal(request.command, 'root-native-notifier-event');
+        if (fault === 'request') throw Error('injected request failure');
+        return { handle: 17 };
+      },
+    };
+    const imports = {
+      'node:path': path,
+      'node:fs/promises': {
+        async readFile() { reads += 1; return JSON.stringify(notifier); },
+        async writeFile(filename, contents, options) {
+          assert.equal(options.mode, 0o600);
+          records.push(JSON.parse(contents));
+        },
+      },
+    };
+    const exported = { exports: {} };
+    const context = vm.createContext({ module: exported, __dirname: '/host-fixture', Buffer,
+      require(name) { assert.ok(Object.hasOwn(imports, name), `Unexpected export import: ${name}`); return imports[name]; } });
+    new vm.Script(fs.readFileSync(path.join(root, 'engine/switch2/ro/export-handle.cjs'), 'utf8')).runInContext(context);
+    return { run: handle => exported.exports.exportHandle(memory, handle, 'host-only fixture'),
+      writes, requests, records, reads: () => reads };
+  };
+  await check('Handle export rejects invalid handles before evidence reads or writes', async () => {
+    for (const handle of [0, -1, 1.5, NaN, '7', 0x80000000, 0xffffffff]) {
+      const fixture = exportFixture();
+      await assert.rejects(fixture.run(handle), /existing FS handle/);
+      assert.equal(fixture.reads(), 0);
+      assert.equal(fixture.writes.length + fixture.requests.length, 0);
+    }
+    const pseudo = exportFixture();
+    assert.equal((await pseudo.run(0xffff8001)).handle, 17);
+    assert.equal(pseudo.writes[0][2].readUInt32LE(), 0xffff8001);
+  });
+  await check('Handle export rejects stale identity and changed notifier before writes', async () => {
+    for (const fault of ['session', 'report', 'identity', 'backend']) {
+      const fixture = exportFixture(fault);
+      await assert.rejects(fixture.run(12), /another endpoint|backend changed/);
+      assert.equal(fixture.writes.length + fixture.requests.length, 0);
+      assert.equal(fixture.records.length, 0);
+    }
+  });
+  await check('Handle export records conditional cleanup without claiming failed writes restored', async () => {
+    for (const fault of [null, 'request', 'first-write', 'restore']) {
+      const fixture = exportFixture(fault);
+      if (fault) await assert.rejects(fixture.run(12), /injected (request|write) failure/);
+      else assert.equal((await fixture.run(12)).handle, 17);
+      assert.equal(fixture.writes.length, fault === 'first-write' ? 1 : 2);
+      assert.equal(fixture.requests.length, fault === 'first-write' ? 0 : 1);
+      assert.equal(fixture.writes[0][0], 0x3000);
+      assert.equal(fixture.writes[0][1].readUInt32LE(), 7);
+      assert.equal(fixture.writes[0][2].readUInt32LE(), 12);
+      if (fixture.writes.length === 2) {
+        assert.equal(fixture.writes[1][1].readUInt32LE(), 12);
+        assert.equal(fixture.writes[1][2].readUInt32LE(), 7);
+      }
+      assert.equal(fixture.records.at(-1).restored, fault === null || fault === 'request');
+    }
+  });
   await check('Assembly test fixture rebuild matches shipped bytes', () => {
     assert.equal(execFileSync(zig, ['version'], { encoding: 'utf8' }).trim(), '0.15.2');
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'native-assembly-'));
@@ -429,7 +507,7 @@ async function reviewNative(root, expectedRevision, zig = 'zig') {
     }
   });
 
-  assert.equal(results.length, 20, 'Native audit case coverage is incomplete');
+  assert.equal(results.length, 23, 'Native audit case coverage is incomplete');
   assert.deepEqual(inspectSource(root, expectedRevision), inspected, 'Upstream source changed during audit');
   const count = status => results.filter(result => result.status === status).length;
   return {

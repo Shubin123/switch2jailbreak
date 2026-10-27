@@ -79,7 +79,7 @@ test('native source inspection rejects wrong revisions, dirty trees and symlinks
     git(['-c', 'commit.gpgsign=false', 'commit', '-qm', 'Fixture source']);
     const revision = git(['rev-parse', 'HEAD']);
     const files = inspectSource(root, revision);
-    assert.equal(Object.keys(files).length, 17);
+    assert.equal(Object.keys(files).length, 20);
     assert.equal(files[sourceFiles[0]].sha256, hash(Buffer.from('fixture data\n')));
     assert.equal(files[sourceFiles[0]].lines, 1);
     assert.throws(() => inspectSource(root, 'f'.repeat(40)), /Wrong upstream revision/);

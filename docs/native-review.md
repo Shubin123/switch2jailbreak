@@ -10,7 +10,7 @@ proof of console compatibility, or independent hardware reproduction.
 
 ## Coverage and source identity
 
-The walkthrough covered these 17 complete text files (1,790 lines including
+The walkthrough covered these 20 complete text files (1,946 lines including
 comments and manifest data). The audit report records each file's SHA256 and
 line count. These identify the reviewed sources, not the correctness of them.
 
@@ -33,6 +33,9 @@ line count. These identify the reviewed sources, not the correctness of them.
 | `engine/switch2/ro/layout.cjs` | Capture bounds and digest, boot binding, live identity checks, bounded thread walk and table search window |
 | `engine/switch2/ro/gate.cjs` | Session identity guards, pending selection tracking, compare-before-write calls, grouped restoration and event retirement evidence |
 | `engine/switch2/ro/launch.cjs` | Target/mount/type checks, bounded request loop, two-reference exchange, partial rollback and restoration ordering |
+| `engine/switch2/ro/export-handle.cjs` | Handle range, notifier identity, substitution and conditional restoration around the copy request |
+| `engine/switch2/ro/bind-sessions.cjs` | Heap/session bounds, unique server bindings, domain ID bounds and adapter-type matching |
+| `engine/switch2/ro/copy-loader-root.cjs` | Manager/owner identity, reference-count challenges, temporary slot substitution and readback evidence |
 
 The C payload's fixed output is 24 64-bit words. Its largest declared reply is
 184 bytes; with the response's 48-byte prefix this occupies 232 bytes of the
@@ -51,7 +54,7 @@ It neither calls a console nor
 executes the resulting native instructions. Transport methods are replaced by
 throwing stubs or deterministic in-memory responses for the interface checks.
 
-The report contains 20 separately accounted checks:
+The report contains 23 separately accounted checks:
 
 1. Synthetic ELF packaging and independent segment validation.
 2. Rejection of truncated ELF headers.
@@ -73,9 +76,12 @@ The report contains 20 separately accounted checks:
 17. Gate identity/wait-word rejection and contiguous waiter-array guard, before writes.
 18. Refusal to restore unsettled or selected sessions and incompatible grouped gates.
 19. Failed event signaling leaves no successful snapshot-retirement evidence.
-20. Zig 0.15.2 assembly of the test fixture matching its shipped bytes.
+20. Handle-range rejection before file reads or writes, with explicit current-process pseudo-handle acceptance.
+21. Rejection of stale notifier session/report/identity or changed backend before writes.
+22. Mocked export success, request failure, first-write failure and restoration failure with exact write ordering and evidence flags.
+23. Zig 0.15.2 assembly of the test fixture matching its shipped bytes.
 
-Local run: **20 pass, zero failures, zero skips/errors**. Four additional
+Local run: **23 pass, zero failures, zero skips/errors**. Four additional
 offline regression tests exercise the audit validator itself, including
 corrupt internal hashes despite a recomputed outer manifest, wrong/dirty source
 trees, and symlink rejection. The normal CI build gate repeats the pinned audit
@@ -195,6 +201,45 @@ Status: **source-backed failure-ordering concern, not a reproduced device
 fault**. The complete saved exchange/write/rollback/restoration fields and
 transport state are necessary when interpreting a failed run. Successful host
 parser checks do not establish transactional recovery.
+
+### NR-09 — Temporary substitutions have conditional rollback coverage
+
+Both the notifier export and Loader-root copy perform their initial substitution
+before entering the `try/finally` that restores it. A rejected first write does
+not enter that cleanup block. Whether a write failure means no target mutation
+occurred depends on the lower transport/write contract and failure timing;
+this review does not assume that a lost reply proves no effect.
+
+The export mocks confirm rejection before writes for invalid handles, stale
+identity and a changed notifier backend. A successful request and an injected
+request failure both attempt the reverse substitution. Injected first-write
+and restoration-write failures leave the saved `restored` flag false; a
+first-write failure makes no second write attempt. These mocks record calls
+and evidence only; they neither change target memory nor reproduce a console
+transport fault. The root-copy command was statically reviewed, not executed.
+
+Status: **host-reproduced cleanup ordering, with unresolved target effect**.
+Do not retry the temporary substitution or infer restoration from an exception
+alone. The original slot/readback and reference-count evidence remain necessary.
+
+### NR-10 — Session records are local evidence, not authenticated objects
+
+The binding command checks a bounded captured-heap session pool, two unique
+domain bindings, idle state, wait/receive equality, bounded domain object IDs,
+live owner/object pointers and matching adapter metadata/vtables. These checks
+depend on current capture/proof records and the lower memory interface; they
+are not an independent attestation of the target. Later consumers must retain
+their own live identity checks rather than treating a saved binding as durable.
+
+Unlike several neighboring proof writers, its bound-session and filesystem-type
+JSON writes do not request an explicit file mode. Creation therefore depends
+on the host's umask/defaults and any existing file permissions. These records
+contain addresses and raw object/session headers. No real records or memory
+dumps were published in this review, and the host umask was not changed.
+
+Status: **static local-evidence/permissions boundary**. Handle ownership,
+reference-count changes and real session concurrency still require target
+evidence; passing the notifier mocks cannot establish those properties.
 
 ## Reproduce without a console
 
