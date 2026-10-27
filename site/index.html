@@ -76,6 +76,15 @@
     .log-ok { color: var(--ok); }
     .steps { color: var(--dim); font-size: .9rem; line-height: 1.8; }
     .steps code { font-size: .85rem; }
+    .scan-bar { display: flex; gap: 8px; margin: 12px 0; flex-wrap: wrap; align-items: center; }
+    .scan-bar button { font: 13px/1.4 monospace; background: var(--card); color: var(--accent); border: 1px solid var(--border); border-radius: 4px; padding: 6px 14px; cursor: pointer; font-weight: 600; }
+    .scan-bar button:hover { background: var(--border); }
+    .scan-bar button:active { opacity: .8; }
+    .scan-bar button:disabled { opacity: .4; cursor: default; }
+    .scan-results { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+    .scan-hit { background: #1b3a1b; color: var(--ok); border: 1px solid #2e5a2e; padding: 4px 12px; border-radius: 4px; cursor: pointer; font: 13px/1.4 monospace; }
+    .scan-hit:hover { background: #2e5a2e; }
+    .scan-progress { color: var(--dim); font-size: .8rem; font-family: monospace; }
 
     footer { margin-top: 56px; padding: 24px 0; border-top: 1px solid var(--border); font-size: .85rem; color: var(--dim); }
 
@@ -165,16 +174,24 @@
 
       <div id="setupBox" class="setup-box">
         <p><strong>Step 1:</strong> On your Mac, run: <code>node scripts/debug-server.cjs</code></p>
-        <p style="margin-top:10px"><strong>Step 2:</strong> Tap the link below to connect to the debug server on your LAN:</p>
+        <p style="margin-top:10px"><strong>Step 2:</strong> Tap the link or scan for the server:</p>
         <p id="lanLink" style="margin-top:10px;font-size:1.2rem;text-align:center"><a href="http://192.168.1.181:8080" id="lanAnchor">http://192.168.1.181:8080</a></p>
-        <p style="margin-top:10px;color:var(--dim);font-size:.85rem">Different IP? Enter it here:</p>
+        <p style="margin-top:10px;color:var(--dim);font-size:.85rem">Different IP? Enter it or scan your LAN:</p>
         <div class="setup-row" style="margin-top:6px">
           <input id="hostInput" type="text" placeholder="192.168.1.x" autocomplete="off" autocorrect="off" spellcheck="false">
           <button id="connectBtn" type="button">Go</button>
         </div>
+        <div class="scan-bar" style="margin-top:10px">
+          <button id="scanBtn" type="button">Scan LAN</button>
+          <span id="scanStatus" class="scan-progress"></span>
+        </div>
+        <div id="scanResults" class="scan-results"></div>
       </div>
 
-      <div id="connStatus" class="conn-status idle">Not connected</div>
+      <div id="connBar" style="display:flex;gap:8px;align-items:center;margin:12px 0">
+        <div id="connStatus" class="conn-status idle" style="flex:1;margin:0">Not connected</div>
+        <button id="reconnBtn" type="button" style="display:none;font:13px/1.4 monospace;background:var(--accent);color:#000;border:none;border-radius:4px;padding:8px 14px;cursor:pointer;font-weight:600">Reconnect</button>
+      </div>
 
       <p class="debug-label">Connection log</p>
       <div id="debug-log"></div>
@@ -213,16 +230,25 @@
   var capsBox = document.getElementById('debug-caps');
   var logBox = document.getElementById('debug-log');
   var setupBox = document.getElementById('setupBox');
+  var reconnBtn = document.getElementById('reconnBtn');
+  var scanBtn = document.getElementById('scanBtn');
+  var scanStatus = document.getElementById('scanStatus');
+  var scanResults = document.getElementById('scanResults');
   var pollTimer = null;
   var baseUrl = '';
   var startTime = Date.now();
   var seenCmd = 0;
+  var failCount = 0;
 
   function connectTo(url) {
     baseUrl = url;
-    setupBox.innerHTML = '<p style="color:var(--ok)">Connected to <strong>' + url + '</strong></p>';
+    reconnBtn.style.display = 'inline-block';
     beginPolling();
   }
+
+  reconnBtn.addEventListener('click', function() {
+    if (baseUrl) { failCount = 0; beginPolling(); }
+  });
 
   if (window.__DEBUG_HOST__) {
     tabs.forEach(function(t) { t.classList.remove('active'); });
@@ -264,6 +290,80 @@
   });
 
   hostInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') connectBtn.click(); });
+
+  // --- LAN scanner ---
+  scanBtn.addEventListener('click', function() {
+    scanBtn.disabled = true;
+    scanResults.innerHTML = '';
+    var subnets = [];
+    // Detect likely subnet from current page or saved host
+    var hint = hostInput.value.trim() || location.hostname;
+    var parts = hint.match(/^(\d+\.\d+\.\d+)\./);
+    if (parts) {
+      subnets.push(parts[1]);
+    } else {
+      subnets.push('192.168.1');
+    }
+    if (subnets[0] !== '192.168.0') subnets.push('192.168.0');
+    if (subnets[0] !== '10.0.0') subnets.push('10.0.0');
+
+    var total = subnets.length * 254;
+    var done = 0;
+    var found = 0;
+    var active = 0;
+    var maxConcurrent = 30;
+    var queue = [];
+    for (var s = 0; s < subnets.length; s++) {
+      for (var i = 1; i <= 254; i++) {
+        queue.push(subnets[s] + '.' + i);
+      }
+    }
+
+    function updateScanStatus() {
+      scanStatus.textContent = done + '/' + total + ' scanned' + (found ? ', ' + found + ' found' : '');
+      if (done >= total) {
+        scanBtn.disabled = false;
+        scanBtn.textContent = 'Scan again';
+        if (!found) scanStatus.textContent += ' — no servers found';
+      }
+    }
+
+    function probeNext() {
+      if (queue.length === 0) return;
+      var ip = queue.shift();
+      active++;
+      var url = 'http://' + ip + ':8080';
+      var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      var timer = setTimeout(function() { if (controller) controller.abort(); }, 1500);
+      var opts = {method:'GET'};
+      if (controller) opts.signal = controller.signal;
+      fetch(url + '/api/poll?after=0', opts).then(function(r) {
+        clearTimeout(timer);
+        if (r.ok) return r.json(); throw new Error('not ok');
+      }).then(function(data) {
+        if (data && typeof data === 'object') {
+          found++;
+          var el = document.createElement('button');
+          el.className = 'scan-hit';
+          el.textContent = ip + ':8080';
+          el.addEventListener('click', function() {
+            window.location.href = url;
+          });
+          scanResults.appendChild(el);
+        }
+      }).catch(function(){}).finally(function() {
+        clearTimeout(timer);
+        done++; active--;
+        updateScanStatus();
+        if (active < maxConcurrent && queue.length > 0) probeNext();
+      });
+    }
+
+    updateScanStatus();
+    for (var j = 0; j < Math.min(maxConcurrent, queue.length); j++) {
+      probeNext();
+    }
+  });
 
   function appendLog(msg, cls) {
     var el = document.createElement('div');
@@ -370,7 +470,10 @@
 
   function beginPolling() {
     if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    failCount = 0;
     appendLog('Connecting to ' + baseUrl);
+    connStatus.className = 'conn-status idle';
+    connStatus.textContent = 'Connecting...';
     var caps = gatherCapabilities();
     post('/api/capabilities', caps, function(res) {
       if (res.error) {
@@ -383,34 +486,60 @@
       connStatus.textContent = 'Connected to host';
       appendLog('Connected — capabilities sent', 'log-ok');
       seenCmd = res.cmdId || 0;
+      failCount = 0;
       pollTimer = setInterval(poll, 1500);
     });
   }
 
   function poll() {
     get('/api/poll?after=' + seenCmd, function(res) {
-      if (res.error) { connStatus.className = 'conn-status disconnected'; connStatus.textContent = 'Poll failed — retrying'; return; }
+      if (res.error) {
+        failCount++;
+        connStatus.className = 'conn-status disconnected';
+        connStatus.textContent = 'Poll failed (' + failCount + ') — retrying';
+        if (failCount >= 10) {
+          clearInterval(pollTimer); pollTimer = null;
+          connStatus.textContent = 'Disconnected — tap Reconnect';
+          appendLog('Lost connection after ' + failCount + ' failures', 'log-err');
+        }
+        return;
+      }
+      if (failCount > 0) { appendLog('Reconnected after ' + failCount + ' retries', 'log-ok'); }
+      failCount = 0;
       connStatus.className = 'conn-status connected'; connStatus.textContent = 'Connected to host';
       if (!res.commands || !res.commands.length) return;
       for (var i = 0; i < res.commands.length; i++) {
-        var cmd = res.commands[i]; seenCmd = cmd.id;
-        if (cmd.type === 'eval') {
-          appendLog('Eval: ' + cmd.code);
-          try {
-            var result = (0, eval)(cmd.code);
-            var str = String(result);
-            if (typeof result === 'object' && result !== null) { try { str = JSON.stringify(result, null, 2); } catch(e) { str = String(result); } }
-            post('/api/result', {cmdId:cmd.id, result:str, error:false}, function(){});
-            appendLog('=> ' + str, 'log-ok');
-          } catch(e) {
-            post('/api/result', {cmdId:cmd.id, result:e.message, error:true}, function(){});
-            appendLog('=> Error: ' + e.message, 'log-err');
+        (function(cmd) {
+          seenCmd = cmd.id;
+          if (cmd.type === 'eval') {
+            appendLog('Eval: ' + cmd.code.substring(0, 80) + (cmd.code.length > 80 ? '...' : ''));
+            try {
+              var result = (0, eval)(cmd.code);
+              if (result && typeof result === 'object' && typeof result.then === 'function') {
+                result.then(function(val) {
+                  var str = typeof val === 'object' && val !== null ? JSON.stringify(val) : String(val);
+                  post('/api/result', {cmdId:cmd.id, result:str, error:false}, function(){});
+                  appendLog('=> ' + str, 'log-ok');
+                }).catch(function(e) {
+                  post('/api/result', {cmdId:cmd.id, result:e.message, error:true}, function(){});
+                  appendLog('=> Async error: ' + e.message, 'log-err');
+                });
+              } else {
+                var str = String(result);
+                if (typeof result === 'object' && result !== null) { try { str = JSON.stringify(result); } catch(e) { str = String(result); } }
+                post('/api/result', {cmdId:cmd.id, result:str, error:false}, function(){});
+                appendLog('=> ' + str, 'log-ok');
+              }
+            } catch(e) {
+              post('/api/result', {cmdId:cmd.id, result:e.message, error:true}, function(){});
+              appendLog('=> Error: ' + e.message, 'log-err');
+            }
+          } else if (cmd.type === 'request-caps') {
+            var caps = gatherCapabilities();
+            capsBox.textContent = formatCaps(caps);
+            post('/api/capabilities', caps, function(){}); appendLog('Refreshed capabilities', 'log-ok');
           }
-        } else if (cmd.type === 'request-caps') {
-          var caps = gatherCapabilities();
-          capsBox.textContent = formatCaps(caps);
-          post('/api/capabilities', caps, function(){}); appendLog('Refreshed capabilities', 'log-ok');
-        }
+        })(res.commands[i]);
       }
     });
   }
