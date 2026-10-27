@@ -6,6 +6,16 @@
 
 ## Dependency matrix
 
+### Follow-up verification (October 27, 2026)
+
+The original host snapshot below is retained for context. A subsequent run
+downloaded the SHA256-pinned official Zig 0.15.2 macOS arm64 compiler and rebuilt
+the pinned upstream payload with `--check`. The 4,757-byte result matched the
+shipped binary byte-for-byte; the hardened verifier reports eight passes, zero
+failures, zero skips. See `security-review.md` for the payload hash and review
+scope. Reproduce with `scripts/install-zig.sh`, add its installation directory
+to `PATH`, and run `REQUIRE_REBUILD=1 scripts/verify-upstream.sh`.
+
 ### Runtime dependencies
 
 | Dependency | Type | Required version | Installed | Status |

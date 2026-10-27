@@ -45,7 +45,7 @@ jobs:
 
       - name: Run compatibility tests
         run: |
-          node --test tests/browser-loading.test.cjs
+          node --test tests/*.test.cjs
           chmod +x tests/run-all.sh
           tests/run-all.sh
 
@@ -73,6 +73,9 @@ jobs:
 
       - name: Verify upstream
         run: |
+          bash scripts/install-zig.sh "$RUNNER_TEMP/zig-0.15.2"
+          export PATH="$RUNNER_TEMP/zig-0.15.2:$PATH"
+          export REQUIRE_REBUILD=1
           chmod +x scripts/verify-upstream.sh
           scripts/verify-upstream.sh
 
