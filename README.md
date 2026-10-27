@@ -111,6 +111,22 @@ remains open: host tooling and desktop controls are verified, but a full
 upstream native-code review and console validation are not complete. The
 source prerelease does not establish those missing results.
 
+## GitHub Pages status site
+
+`site/index.html` is a static, script-free evidence summary. It explicitly keeps
+Phase 4 open and does not run a browser harness or console payload. Only `site/`
+is uploaded by `.github/workflows/pages.yml`; raw workspace files are not served.
+
+To publish, select **Settings → Pages → Build and deployment → Source → GitHub
+Actions**, then push these changes to `main`. The **Publish status site** workflow
+also supports manual runs once it is on the default branch. No deployment is
+performed by local edits alone. Review the repository's visibility and intended
+publication audience before enabling Pages.
+
+Preview locally with `python3 -m http.server 8000 --bind 127.0.0.1 --directory site`
+and open `http://127.0.0.1:8000`. Keep the dated site summary aligned with
+`docs/phase-status.md` when evidence changes; publishing does not close any gate.
+
 ## References
 
 - [Author's technical write-up](https://pepsipu.com/blog/2026-10-switch2-jailbreak-ns2jb/)
