@@ -10,6 +10,7 @@ const readline = require('node:readline');
 
 const HTTP_PORT = process.env.PORT ? Number(process.env.PORT) : 8080;
 const DNS_PORT = process.env.DNS_PORT ? Number(process.env.DNS_PORT) : 53;
+const DNS_ALT_PORT = 10053;
 const SKIP_DNS = process.argv.includes('--no-dns');
 
 function getLanIP() {
@@ -106,9 +107,57 @@ dns.on('error', err => {
     process.exit(1);
   }
   if (err.code === 'EADDRINUSE') {
-    console.error(`[dns] Port ${DNS_PORT} in use (macOS mDNSResponder?). Starting HTTP-only mode.`);
-    console.error('[dns] Use --no-dns to suppress this, or sudo to override.\n');
-    startHTTP();
+    console.log(`[dns] Port ${DNS_PORT} in use — trying alt port ${DNS_ALT_PORT} with pfctl redirect...`);
+    const altDns = dgram.createSocket('udp4');
+    altDns.on('message', (msg, rinfo) => { dns.emit('message', msg, rinfo); });
+    // Reuse the same handler by monkey-patching send
+    altDns.on('message', (msg, rinfo) => {
+      try {
+        const resp = buildDNSResponse(msg, lanIP);
+        altDns.send(resp, rinfo.port, rinfo.address);
+        dnsQueries++;
+        let name = '', off = 12;
+        while (off < msg.length && msg[off] !== 0 && (msg[off] & 0xc0) === 0) {
+          const len = msg[off++];
+          if (name) name += '.';
+          name += msg.subarray(off, off + len).toString('ascii');
+          off += len;
+        }
+        if (name.includes('nintendo') || name.includes('conntest') || dnsQueries <= 5) {
+          console.log(`[dns] ${rinfo.address} → ${name} → ${lanIP}`);
+        }
+      } catch {}
+    });
+    altDns.bind(DNS_ALT_PORT, '0.0.0.0', () => {
+      console.log(`[dns] Listening on alt port ${DNS_ALT_PORT}`);
+      // Set up pfctl to redirect 53 → alt port
+      const { execSync } = require('child_process');
+      try {
+        const iface = execSync("route -n get default 2>/dev/null | awk '/interface:/{print $2}'").toString().trim() || 'en0';
+        const rules = [
+          `rdr pass on lo0 proto udp from any to any port 53 -> 127.0.0.1 port ${DNS_ALT_PORT}`,
+          `rdr pass on ${iface} proto udp from any to any port 53 -> ${lanIP} port ${DNS_ALT_PORT}`,
+          `rdr pass on lo0 proto tcp from any to any port 53 -> 127.0.0.1 port ${DNS_ALT_PORT}`,
+          `rdr pass on ${iface} proto tcp from any to any port 53 -> ${lanIP} port ${DNS_ALT_PORT}`,
+          ''
+        ].join('\n');
+        fs.writeFileSync('/tmp/ns2jb-dns-rdr.conf', rules);
+        execSync('pfctl -ef /tmp/ns2jb-dns-rdr.conf 2>&1');
+        console.log(`[dns] pfctl redirect active: port 53 → ${DNS_ALT_PORT}`);
+        startHTTP(true);
+        process.on('exit', () => { try { execSync('pfctl -d 2>/dev/null'); } catch {} });
+        process.on('SIGINT', () => { try { execSync('pfctl -d 2>/dev/null'); } catch {} process.exit(0); });
+        process.on('SIGTERM', () => { try { execSync('pfctl -d 2>/dev/null'); } catch {} process.exit(0); });
+      } catch(e) {
+        console.log(`[dns] pfctl redirect failed: ${e.message}`);
+        console.log('[dns] Falling back to HTTP-only mode. Point Switch browser to the URL manually.');
+        startHTTP(false);
+      }
+    });
+    altDns.on('error', (e2) => {
+      console.error(`[dns] Alt port ${DNS_ALT_PORT} also failed: ${e2.message}. HTTP-only mode.`);
+      startHTTP(false);
+    });
     return;
   }
   console.error('[dns]', err.message);
@@ -405,9 +454,35 @@ function startHTTP(dnsActive) {
           } catch(e) { console.log(`Failed: ${e.message}`); }
           rl.prompt(); return;
         }
+        if (t === ':scv2' || t === ':scv2run') {
+          const p = path.join(__dirname, 'sc-exploit-v2.js');
+          try {
+            const code = fs.readFileSync(p, 'utf8');
+            commands.push({ id: ++cmdId, type: 'eval', code });
+            console.log(`Loaded SC exploit v2 (${code.length} bytes, cmd #${cmdId})`);
+            // Auto-run the exploit
+            commands.push({ id: ++cmdId, type: 'eval', code: 'window.scV2.run()' });
+            console.log('Auto-queued window.scV2.run()');
+          } catch(e) { console.log(`Failed: ${e.message}`); }
+          rl.prompt(); return;
+        }
+        if (t === ':scv2diag') {
+          const p = path.join(__dirname, 'sc-exploit-v2.js');
+          try {
+            const code = fs.readFileSync(p, 'utf8');
+            commands.push({ id: ++cmdId, type: 'eval', code });
+            console.log(`Loaded SC exploit v2 (${code.length} bytes, cmd #${cmdId})`);
+            // Auto-run diagnostic
+            commands.push({ id: ++cmdId, type: 'eval', code: 'window.scV2.diag()' });
+            console.log('Auto-queued window.scV2.diag()');
+          } catch(e) { console.log(`Failed: ${e.message}`); }
+          rl.prompt(); return;
+        }
         if (t === ':help' || t === ':h') {
+          console.log('  :scv2diag    — SC exploit v2 buffer confusion diagnostic');
+          console.log('  :scv2        — SC exploit v2 (run full exploit)');
           console.log('  :sctest      — structured clone mismatch test (Bug 265975)');
-          console.log('  :scrun       — load SC exploit (run with window.scExploit.run())');
+          console.log('  :scrun       — load SC exploit v1');
           console.log('  :trigger     — send CVE-2023-37450 trigger test');
           console.log('  :exploit     — send full exploit (all stages)');
           console.log('  :primitives  — load JSC exploit primitives (Int64, addrof, etc)');
