@@ -300,10 +300,10 @@ function startHTTP(dnsActive) {
     console.log('║  Capabilities stream here. Type JS to eval.          ║');
     console.log('║                                                      ║');
     console.log('╠═══════════════════════════════════════════════════════╣');
-    console.log('║  :trigger = CVE test      :exploit = full chain      ║');
+    console.log('║  :sctest = SC mismatch     :trigger = CVE test        ║');
     console.log('║  :primitives = JSC helpers :overflow = fs shellcode   ║');
-    console.log('║  :chain = fs exploit chain :load <file> = load JS    ║');
-    console.log('║  :list  :caps  :help  :quit                          ║');
+    console.log('║  :chain = fs exploit chain :exploit = full chain      ║');
+    console.log('║  :load <file> = load JS    :list  :caps  :help       ║');
     console.log('╚═══════════════════════════════════════════════════════╝');
     console.log('');
     console.log('Waiting for Switch 2 to connect...');
@@ -350,6 +350,25 @@ function startHTTP(dnsActive) {
           } catch(e) { console.log(`Failed: ${e.message}`); }
           rl.prompt(); return;
         }
+        if (t === ':sctest') {
+          const scPath = path.join(__dirname, 'sc-mismatch-test.js');
+          try {
+            const code = fs.readFileSync(scPath, 'utf8');
+            commands.push({ id: ++cmdId, type: 'eval', code });
+            console.log(`Loaded structured clone mismatch test (${code.length} bytes, cmd #${cmdId})`);
+          } catch(e) { console.log(`Failed: ${e.message}`); }
+          rl.prompt(); return;
+        }
+        if (t === ':scrun') {
+          const scPath = path.join(__dirname, 'sc-exploit.js');
+          try {
+            const code = fs.readFileSync(scPath, 'utf8');
+            commands.push({ id: ++cmdId, type: 'eval', code });
+            console.log(`Loaded SC exploit (${code.length} bytes, cmd #${cmdId})`);
+            console.log('Run window.scExploit.run().then(r => JSON.stringify(r)) to start');
+          } catch(e) { console.log(`Failed: ${e.message}`); }
+          rl.prompt(); return;
+        }
         if (t === ':exploit') {
           const exploitPath = path.join(__dirname, 'exploit-switch2.js');
           try {
@@ -387,6 +406,8 @@ function startHTTP(dnsActive) {
           rl.prompt(); return;
         }
         if (t === ':help' || t === ':h') {
+          console.log('  :sctest      — structured clone mismatch test (Bug 265975)');
+          console.log('  :scrun       — load SC exploit (run with window.scExploit.run())');
           console.log('  :trigger     — send CVE-2023-37450 trigger test');
           console.log('  :exploit     — send full exploit (all stages)');
           console.log('  :primitives  — load JSC exploit primitives (Int64, addrof, etc)');

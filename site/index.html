@@ -417,6 +417,9 @@
     if (c.performance) { try { var t1 = performance.now(), t2 = performance.now(), tries = 0; while (t2 === t1 && tries < 1000) { t2 = performance.now(); tries++; } c.timerResolution = tries < 1000 ? (t2 - t1).toFixed(6) + 'ms' : '>1ms (clamped)'; } catch(e) { c.timerResolution = 'error'; } }
     try { c.transferable = new ArrayBuffer(8).byteLength === 8; } catch(e) { c.transferable = false; }
     try { c.finalizationRegistry = typeof FinalizationRegistry !== 'undefined'; } catch(e) { c.finalizationRegistry = false; }
+    try { c.messageChannel = typeof MessageChannel === 'function'; } catch(e) { c.messageChannel = false; }
+    try { c.historyReplaceState = typeof history !== 'undefined' && typeof history.replaceState === 'function'; } catch(e) { c.historyReplaceState = false; }
+    try { c.historyState = typeof history !== 'undefined' && 'state' in history; } catch(e) { c.historyState = false; }
     try { var fn = function() { var s = 0; for (var i = 0; i < 10000; i++) s += i; return s; }; var t0 = Date.now(); for (var r = 0; r < 100; r++) fn(); c.jitWarmupMs = Date.now() - t0; } catch(e) { c.jitWarmupMs = 'error'; }
     return c;
   }
@@ -430,6 +433,7 @@
       'JS Engine': ['es6Proxy','es6Symbol','bigInt','weakRef','sharedArrayBuffer','atomics','webAssembly','structuredClone'],
       'Typed Arrays': ['dataView','float64Array','bigInt64Array','transferable'],
       'Web APIs': ['xhr','fetch','webWorkers','serviceWorker','webGL','webGPU','indexedDB','localStorage','crypto','performance'],
+      'Exploit APIs': ['messageChannel','historyReplaceState','historyState'],
       'Timing/GC': ['timerResolution','finalizationRegistry','jitWarmupMs']
     };
     for (var s in secs) {
